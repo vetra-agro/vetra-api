@@ -38,6 +38,7 @@ async function bootstrap() {
 
   // ── Swagger ──────────────────────────────────────
   const swaggerEnabled = config.get<string>('SWAGGER_ENABLED', 'true') !== 'false';
+  console.log(`[config] SWAGGER_ENABLED=${config.get('SWAGGER_ENABLED')} → swaggerEnabled=${swaggerEnabled}`);
   if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Vetra API')
