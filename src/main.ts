@@ -36,8 +36,9 @@ async function bootstrap() {
     }),
   );
 
-  // ── Swagger (desabilitar em produção se quiser) ──
-  if (config.get('NODE_ENV') !== 'production') {
+  // ── Swagger ──────────────────────────────────────
+  const swaggerEnabled = config.get<string>('SWAGGER_ENABLED', 'true') !== 'false';
+  if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Vetra API')
       .setDescription('ERP Agro — API core')
