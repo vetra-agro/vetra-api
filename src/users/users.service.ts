@@ -10,11 +10,11 @@ import { UpdateUserDto } from './dto/update-user.dto';
 export class UsersService {
   constructor(private supabase: SupabaseProvider) {}
 
-  // ── Listar todos os usuários (admin_users_view) ────────────
+  // ── Listar todos os usuários ────────────────────────────────
   async findAll(filters?: { role?: string; active?: boolean; search?: string }) {
     let query = this.supabase
       .getAdminClient()
-      .from('admin_users_view')
+      .from('profiles')
       .select('*')
       .order('created_at', { ascending: false });
 
@@ -28,14 +28,14 @@ export class UsersService {
 
     const { data, error } = await query;
     if (error) throw new BadRequestException(error.message);
-    return data;
+    return data ?? [];
   }
 
   // ── Buscar usuário por ID ──────────────────────────────────
   async findOne(id: string) {
     const { data, error } = await this.supabase
       .getAdminClient()
-      .from('admin_users_view')
+      .from('profiles')
       .select('*')
       .eq('id', id)
       .single();
