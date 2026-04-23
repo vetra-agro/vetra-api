@@ -11,7 +11,7 @@ export class AuthService {
     const { data, error } = await this.supabase.getClient().auth.signUp({
       email: dto.email,
       password: dto.password,
-      options: { data: { full_name: dto.fullName, role: 'producer' } },
+      options: { data: { full_name: dto.fullName, role: 'owner' } },
     });
     if (error) throw new ConflictException(error.message);
     return { user: data.user, session: data.session };
