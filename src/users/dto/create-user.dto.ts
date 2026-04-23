@@ -1,6 +1,6 @@
 import {
   IsEmail, IsString, IsEnum, IsOptional,
-  MinLength, IsArray, IsUUID,
+  MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -36,9 +36,4 @@ export class CreateUserDto {
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsUUID('4', { each: true })
-  farmIds?: string[];
 }

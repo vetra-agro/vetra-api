@@ -130,13 +130,12 @@ export class UsersService {
       if (upsertError) throw new BadRequestException(upsertError.message);
     }
 
-    // Atualiza campos extras no profile (phone, farm_ids)
-    if (dto.phone || dto.farmIds) {
+    // Atualiza campos extras no profile
+    if (dto.phone) {
       const { error: profileUpdateError } = await admin
         .from('profiles')
         .update({
-          ...(dto.phone    ? { phone: dto.phone }       : {}),
-          ...(dto.farmIds  ? { farm_ids: dto.farmIds }  : {}),
+          phone: dto.phone,
         })
         .eq('id', userId);
 
@@ -157,7 +156,6 @@ export class UsersService {
         ...(dto.fullName ? { full_name: dto.fullName } : {}),
         ...(dto.role     ? { role: dto.role }          : {}),
         ...(dto.phone    ? { phone: dto.phone }        : {}),
-        ...(dto.farmIds  ? { farm_ids: dto.farmIds }   : {}),
       })
       .eq('id', id);
 
