@@ -10,6 +10,41 @@ import { UpdateUserDto } from './dto/update-user.dto';
 export class UsersService {
   constructor(private supabase: SupabaseProvider) {}
 
+  private mapCreateUserError(errorMessage: string): never {
+    const message = errorMessage.toLowerCase();
+    if (
+      message.includes('already been registered') ||
+      message.includes('already registered') ||
+      message.includes('duplicate')
+    ) {
+      throw new ConflictException('Email já cadastrado');
+    }
+    throw new BadRequestException(errorMessage);
+  }
+
+  private async findProfileById(id: string) {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('profiles')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  private async waitForProfile(id: string, attempts = 5, delayMs = 150) {
+    for (let i = 0; i < attempts; i++) {
+      const profile = await this.findProfileById(id);
+      if (profile) return profile;
+      if (i < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    return null;
+  }
+
   // ── Listar todos os usuários ────────────────────────────────
   async findAll(filters?: { role?: string; active?: boolean; search?: string }) {
     let query = this.supabase
@@ -47,19 +82,20 @@ export class UsersService {
   // ── Criar usuário (auth + profile) ────────────────────────
   async create(dto: CreateUserDto) {
     const admin = this.supabase.getAdminClient();
+    const normalizedEmail = dto.email.trim().toLowerCase();
 
     // Verifica email duplicado
     const { data: existing } = await admin
       .from('profiles')
       .select('id')
-      .eq('email', dto.email)
+      .eq('email', normalizedEmail)
       .maybeSingle();
 
     if (existing) throw new ConflictException('Email já cadastrado');
 
     // Cria no Supabase Auth (trigger cria o profile automaticamente)
     const { data, error } = await admin.auth.admin.createUser({
-      email: dto.email,
+      email: normalizedEmail,
       password: dto.password,
       email_confirm: true,  // confirma automaticamente no PoC
       user_metadata: {
@@ -68,20 +104,46 @@ export class UsersService {
       },
     });
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) this.mapCreateUserError(error.message);
+
+    if (!data.user?.id) {
+      throw new BadRequestException('Falha ao criar usuário no provedor de autenticação');
+    }
+
+    const userId = data.user.id;
+
+    // Garante profile mesmo quando o trigger ainda não executou a tempo.
+    const profile = await this.waitForProfile(userId);
+    if (!profile) {
+      const { error: upsertError } = await admin
+        .from('profiles')
+        .upsert(
+          {
+            id: userId,
+            email: normalizedEmail,
+            full_name: dto.fullName,
+            role: dto.role,
+          },
+          { onConflict: 'id' },
+        );
+
+      if (upsertError) throw new BadRequestException(upsertError.message);
+    }
 
     // Atualiza campos extras no profile (phone, farm_ids)
     if (dto.phone || dto.farmIds) {
-      await admin
+      const { error: profileUpdateError } = await admin
         .from('profiles')
         .update({
           ...(dto.phone    ? { phone: dto.phone }       : {}),
           ...(dto.farmIds  ? { farm_ids: dto.farmIds }  : {}),
         })
-        .eq('id', data.user.id);
+        .eq('id', userId);
+
+      if (profileUpdateError) throw new BadRequestException(profileUpdateError.message);
     }
 
-    return this.findOne(data.user.id);
+    return this.findOne(userId);
   }
 
   // ── Atualizar perfil ───────────────────────────────────────
@@ -130,6 +192,18 @@ export class UsersService {
 
     if (error) throw new BadRequestException(error.message);
     return { message: 'Link de recuperação gerado', link: data.properties?.action_link };
+  }
+
+  // ── Alterar senha diretamente ──────────────────────────────
+  async changePassword(id: string, newPassword: string) {
+    await this.findOne(id);
+
+    const { error } = await this.supabase
+      .getAdminClient()
+      .auth.admin.updateUserById(id, { password: newPassword });
+
+    if (error) throw new BadRequestException(error.message);
+    return { message: 'Senha alterada com sucesso' };
   }
 
   // ── Remover usuário ────────────────────────────────────────

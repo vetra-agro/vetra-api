@@ -6,6 +6,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('users')
@@ -66,6 +67,12 @@ export class UsersController {
   @ApiOperation({ summary: 'Gerar link de reset de senha' })
   resetPassword(@Param('id') id: string) {
     return this.usersService.resetPassword(id);
+  }
+
+  @Post(':id/change-password')
+  @ApiOperation({ summary: 'Alterar senha do usuário' })
+  changePassword(@Param('id') id: string, @Body() dto: ChangePasswordDto) {
+    return this.usersService.changePassword(id, dto.newPassword);
   }
 
   @Delete(':id')

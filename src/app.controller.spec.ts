@@ -14,9 +14,14 @@ describe('AppController', () => {
     appController = app.get<AppController>(AppController);
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+  describe('health', () => {
+    it('should return app health payload', () => {
+      const response = appController.health();
+
+      expect(response.status).toBe('ok');
+      expect(response.app).toBe('vetra-api');
+      expect(response.version).toBe('0.1.0');
+      expect(typeof response.timestamp).toBe('string');
     });
   });
 });
