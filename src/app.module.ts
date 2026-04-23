@@ -13,6 +13,7 @@ import { InputsModule } from './inputs/inputs.module';
 import { FinancialModule } from './financial/financial.module';
 import { TeamModule } from './team/team.module';
 import { MapsModule } from './maps/maps.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { MapsModule } from './maps/maps.module';
     FinancialModule,
     TeamModule,
     MapsModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [
