@@ -15,6 +15,7 @@ import { TeamModule } from './team/team.module';
 import { MapsModule } from './maps/maps.module';
 import { UsersModule } from './users/users.module';
 import { MenusModule } from './menus/menus.module';
+import { AclModule } from './acl/acl.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { MenusModule } from './menus/menus.module';
     MapsModule,
     UsersModule,
     MenusModule,
+    AclModule,
   ],
   controllers: [AppController],
   providers: [
