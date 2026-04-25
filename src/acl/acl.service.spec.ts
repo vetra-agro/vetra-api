@@ -31,6 +31,7 @@ describe('AclService', () => {
     const rows = [
       { role: 'owner', module_key: 'farm', action: 'view', allowed: true },
       { role: 'owner', module_key: 'farm', action: 'edit', allowed: false },
+      { role: 'owner', module_key: 'licenses', action: 'admin', allowed: true },
       { role: 'viewer', module_key: 'farm', action: 'view', allowed: true },
     ];
 
@@ -47,6 +48,7 @@ describe('AclService', () => {
 
     expect(matrix['owner']['farm']['view']).toBe(true);
     expect(matrix['owner']['farm']['edit']).toBe(false);
+    expect(matrix['owner']['licenses']['admin']).toBe(true);
     expect(matrix['viewer']['farm']['view']).toBe(true);
   });
 
@@ -73,6 +75,7 @@ describe('AclService', () => {
     const rows = [
       { module_key: 'financial', action: 'view', allowed: true },
       { module_key: 'financial', action: 'edit', allowed: false },
+      { module_key: 'licenses', action: 'view', allowed: true },
     ];
 
     const chain = buildChain({
@@ -89,6 +92,7 @@ describe('AclService', () => {
 
     expect(result['financial']['view']).toBe(true);
     expect(result['financial']['edit']).toBe(false);
+    expect(result['licenses']['view']).toBe(true);
   });
 
   // ── updatePermission ─────────────────────────────────────────────────────
@@ -259,6 +263,20 @@ describe('AclService', () => {
     }));
 
     await expect(service.check('owner', 'farm', 'delete')).resolves.toBe(true);
+  });
+
+  it('should return true when licenses permission is allowed', async () => {
+    const { service } = getService(() => ({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest
+        .fn()
+        .mockResolvedValue({ data: { allowed: true }, error: null }),
+    }));
+
+    await expect(service.check('owner', 'licenses', 'admin')).resolves.toBe(
+      true,
+    );
   });
 
   it('should return false when permission is denied', async () => {
