@@ -95,7 +95,7 @@ export class SettingsService {
     // Verifica se chave existe nos defaults
     const { data: def } = await this.db
       .from('settings')
-      .select('id, key, type, is_required')
+      .select('id, key, type, is_required, group_name, label')
       .is('tenant_id', null)
       .eq('key', key)
       .maybeSingle();
