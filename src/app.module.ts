@@ -17,6 +17,7 @@ import { UsersModule } from './users/users.module';
 import { MenusModule } from './menus/menus.module';
 import { AclModule } from './acl/acl.module';
 import { LicensesModule } from './licenses/licenses.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { LicensesModule } from './licenses/licenses.module';
     AuthModule,
 
     // ── Feature modules ─────────────────────────
+    AuditModule,
     FarmsModule,
     FieldsModule,
     InputsModule,
@@ -48,7 +50,7 @@ import { LicensesModule } from './licenses/licenses.module';
     UsersModule,
     MenusModule,
     AclModule,
-    LicensesModule,
+    LicensesModule,    
   ],
   controllers: [AppController],
   providers: [
