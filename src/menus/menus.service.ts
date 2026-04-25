@@ -1,12 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
+import { AuditService } from '../audit/audit.service';
 
 const ROLES = ['owner','manager','agronomist','accountant','operator','viewer'] as const;
 type Role = typeof ROLES[number];
 
 @Injectable()
 export class MenusService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   // ── Catálogo completo de módulos com itens ───────────────────────────────
   async getModules() {
@@ -89,6 +93,17 @@ export class MenusService {
     const { error } = await admin.from('menu_module_acl')
       .upsert(rows, { onConflict: 'module_id,role' });
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      eventType: 'permission_changed',
+      module: 'admin',
+      entity: 'menu_module_acl',
+      entityId: moduleId,
+      description: 'ACL do módulo atualizada',
+      newValues: acl,
+      success: true,
+    });
+
     return { message: 'ACL do módulo atualizada' };
   }
 
@@ -101,6 +116,17 @@ export class MenusService {
     const { error } = await admin.from('menu_item_acl')
       .upsert(rows, { onConflict: 'item_id,role' });
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      eventType: 'permission_changed',
+      module: 'admin',
+      entity: 'menu_item_acl',
+      entityId: itemId,
+      description: 'ACL do item atualizada',
+      newValues: acl,
+      success: true,
+    });
+
     return { message: 'ACL do item atualizada' };
   }
 
@@ -111,6 +137,17 @@ export class MenusService {
       .update({ active })
       .eq('id', moduleId);
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      eventType: active ? 'module_activated' : 'module_deactivated',
+      module: 'admin',
+      entity: 'menu_module',
+      entityId: moduleId,
+      description: active ? 'Módulo de menu ativado' : 'Módulo de menu desativado',
+      newValues: { active },
+      success: true,
+    });
+
     return { moduleId, active };
   }
 
@@ -121,6 +158,17 @@ export class MenusService {
       .update({ active })
       .eq('id', itemId);
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      eventType: active ? 'module_activated' : 'module_deactivated',
+      module: 'admin',
+      entity: 'menu_item',
+      entityId: itemId,
+      description: active ? 'Item de menu ativado' : 'Item de menu desativado',
+      newValues: { active },
+      success: true,
+    });
+
     return { itemId, active };
   }
 

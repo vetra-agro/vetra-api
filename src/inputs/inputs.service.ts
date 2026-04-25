@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreateInputDto } from './dto/create-input.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class InputsService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   async create(farmId: string, dto: CreateInputDto) {
     const { data, error } = await this.supabase.getClient()
@@ -13,6 +17,19 @@ export class InputsService {
       .select()
       .single();
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      eventType: 'record_created',
+      module: 'inventory',
+      entity: 'input',
+      entityId: data.id,
+      entityLabel: data.name,
+      description: 'Insumo criado',
+      metadata: { farmId },
+      newValues: dto,
+      success: true,
+    });
+
     return data;
   }
 
@@ -44,6 +61,18 @@ export class InputsService {
       .select()
       .single();
     if (error || !data) throw new NotFoundException('Insumo não encontrado');
+
+    await this.audit?.log({
+      eventType: 'record_updated',
+      module: 'inventory',
+      entity: 'input',
+      entityId: id,
+      entityLabel: data.name,
+      description: 'Estoque de insumo atualizado',
+      newValues: { quantity },
+      success: true,
+    });
+
     return data;
   }
 
@@ -53,6 +82,16 @@ export class InputsService {
       .delete()
       .eq('id', id);
     if (error) throw new NotFoundException('Insumo não encontrado');
+
+    await this.audit?.log({
+      eventType: 'record_deleted',
+      module: 'inventory',
+      entity: 'input',
+      entityId: id,
+      description: 'Insumo removido',
+      success: true,
+    });
+
     return { message: 'Insumo removido' };
   }
 }

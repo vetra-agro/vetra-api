@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
+import { AuditService } from '../audit/audit.service';
 
 export type UserRole = 'owner' | 'manager' | 'agronomist' | 'accountant' | 'operator' | 'viewer';
 export type AclAction = 'view' | 'create' | 'edit' | 'delete' | 'export' | 'approve' | 'print' | 'admin';
@@ -15,7 +16,10 @@ export const MODULES = [
 
 @Injectable()
 export class AclService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   // ── Matriz completa: todos perfis × todos módulos ────────────────────────
   async getMatrix() {
@@ -66,6 +70,18 @@ export class AclService {
       .upsert({ role, module_key: moduleKey, action, allowed, updated_by: updatedBy },
         { onConflict: 'role,module_key,action' });
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId: updatedBy,
+      eventType: 'permission_changed',
+      module: 'admin',
+      entity: 'acl_permissions',
+      description: 'Permissão ACL atualizada',
+      metadata: { role, moduleKey, action },
+      newValues: { allowed },
+      success: true,
+    });
+
     return { role, moduleKey, action, allowed };
   }
 
@@ -83,6 +99,18 @@ export class AclService {
       .from('acl_permissions')
       .upsert(rows, { onConflict: 'role,module_key,action' });
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId: updatedBy,
+      eventType: 'permission_changed',
+      module: 'admin',
+      entity: 'acl_permissions',
+      description: 'Permissões ACL atualizadas em lote',
+      metadata: { role },
+      newValues: { permissions },
+      success: true,
+    });
+
     return { updated: rows.length };
   }
 
@@ -101,6 +129,17 @@ export class AclService {
       .from('acl_permissions')
       .upsert(rows, { onConflict: 'role,module_key,action' });
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId: updatedBy,
+      eventType: 'permission_changed',
+      module: 'admin',
+      entity: 'acl_permissions',
+      description: 'Permissões ACL copiadas entre perfis',
+      metadata: { fromRole, toRole, copied: rows.length },
+      success: true,
+    });
+
     return { copied: rows.length, from: fromRole, to: toRole };
   }
 
@@ -113,6 +152,16 @@ export class AclService {
     if (error) throw new Error(error.message);
     // Re-executa o seed default (via função SQL)
     await this.supabase.getAdminClient().rpc('reset_role_acl', { p_role: role });
+
+    await this.audit?.log({
+      eventType: 'permission_changed',
+      module: 'admin',
+      entity: 'acl_permissions',
+      description: 'Permissões ACL resetadas para o perfil',
+      metadata: { role },
+      success: true,
+    });
+
     return { reset: true, role };
   }
 

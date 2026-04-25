@@ -1,14 +1,18 @@
 import {
-  Injectable, NotFoundException,
+  Injectable, NotFoundException, Optional,
   ConflictException, BadRequestException,
 } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   private mapCreateUserError(errorMessage: string): never {
     const message = errorMessage.toLowerCase();
@@ -142,12 +146,28 @@ export class UsersService {
       if (profileUpdateError) throw new BadRequestException(profileUpdateError.message);
     }
 
-    return this.findOne(userId);
+    const createdUser = await this.findOne(userId);
+
+    await this.audit?.log({
+      userId,
+      userEmail: normalizedEmail,
+      userName: dto.fullName,
+      userRole: dto.role,
+      eventType: 'record_created',
+      module: 'users',
+      entity: 'profile',
+      entityId: userId,
+      entityLabel: dto.fullName,
+      description: 'Usuário criado',
+      success: true,
+    });
+
+    return createdUser;
   }
 
   // ── Atualizar perfil ───────────────────────────────────────
   async update(id: string, dto: UpdateUserDto) {
-    await this.findOne(id); // valida existência
+    const previous = await this.findOne(id); // valida existência
 
     const { error } = await this.supabase
       .getAdminClient()
@@ -160,12 +180,39 @@ export class UsersService {
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
-    return this.findOne(id);
+
+    const updated = await this.findOne(id);
+
+    await this.audit?.log({
+      userId: id,
+      userEmail: updated.email,
+      userName: updated.full_name,
+      userRole: updated.role,
+      eventType: 'record_updated',
+      module: 'users',
+      entity: 'profile',
+      entityId: id,
+      entityLabel: updated.full_name,
+      description: 'Dados do usuário atualizados',
+      oldValues: {
+        fullName: previous.full_name,
+        role: previous.role,
+        phone: previous.phone,
+      },
+      newValues: {
+        fullName: updated.full_name,
+        role: updated.role,
+        phone: updated.phone,
+      },
+      success: true,
+    });
+
+    return updated;
   }
 
   // ── Ativar / inativar ──────────────────────────────────────
   async setActive(id: string, active: boolean) {
-    await this.findOne(id);
+    const user = await this.findOne(id);
 
     const { error } = await this.supabase
       .getAdminClient()
@@ -174,6 +221,22 @@ export class UsersService {
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
+
+    await this.audit?.log({
+      userId: id,
+      userEmail: user.email,
+      userName: user.full_name,
+      userRole: user.role,
+      eventType: 'record_updated',
+      module: 'users',
+      entity: 'profile',
+      entityId: id,
+      entityLabel: user.full_name,
+      description: active ? 'Usuário ativado' : 'Usuário inativado',
+      newValues: { active },
+      success: true,
+    });
+
     return { id, active, message: active ? 'Usuário ativado' : 'Usuário inativado' };
   }
 
@@ -189,30 +252,75 @@ export class UsersService {
       });
 
     if (error) throw new BadRequestException(error.message);
+
+    await this.audit?.log({
+      userId: id,
+      userEmail: user.email,
+      userName: user.full_name,
+      userRole: user.role,
+      eventType: 'password_reset',
+      module: 'users',
+      entity: 'profile',
+      entityId: id,
+      entityLabel: user.full_name,
+      description: 'Link de recuperação de senha gerado',
+      success: true,
+    });
+
     return { message: 'Link de recuperação gerado', link: data.properties?.action_link };
   }
 
   // ── Alterar senha diretamente ──────────────────────────────
   async changePassword(id: string, newPassword: string) {
-    await this.findOne(id);
+    const user = await this.findOne(id);
 
     const { error } = await this.supabase
       .getAdminClient()
       .auth.admin.updateUserById(id, { password: newPassword });
 
     if (error) throw new BadRequestException(error.message);
+
+    await this.audit?.log({
+      userId: id,
+      userEmail: user.email,
+      userName: user.full_name,
+      userRole: user.role,
+      eventType: 'password_reset',
+      module: 'users',
+      entity: 'profile',
+      entityId: id,
+      entityLabel: user.full_name,
+      description: 'Senha alterada diretamente por administrador',
+      success: true,
+    });
+
     return { message: 'Senha alterada com sucesso' };
   }
 
   // ── Remover usuário ────────────────────────────────────────
   async remove(id: string) {
-    await this.findOne(id);
+    const user = await this.findOne(id);
 
     const { error } = await this.supabase
       .getAdminClient()
       .auth.admin.deleteUser(id);
 
     if (error) throw new BadRequestException(error.message);
+
+    await this.audit?.log({
+      userId: id,
+      userEmail: user.email,
+      userName: user.full_name,
+      userRole: user.role,
+      eventType: 'record_deleted',
+      module: 'users',
+      entity: 'profile',
+      entityId: id,
+      entityLabel: user.full_name,
+      description: 'Usuário removido',
+      success: true,
+    });
+
     return { message: 'Usuário removido com sucesso' };
   }
 }

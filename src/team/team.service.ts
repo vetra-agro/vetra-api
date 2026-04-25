@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreateWorkerDto } from './dto/create-worker.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class TeamService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   async create(farmId: string, dto: CreateWorkerDto) {
     const { data, error } = await this.supabase.getClient()
@@ -13,6 +17,19 @@ export class TeamService {
       .select()
       .single();
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      eventType: 'record_created',
+      module: 'farm',
+      entity: 'worker',
+      entityId: data.id,
+      entityLabel: data.name,
+      description: 'Funcionário cadastrado',
+      metadata: { farmId },
+      newValues: dto,
+      success: true,
+    });
+
     return data;
   }
 
@@ -32,6 +49,16 @@ export class TeamService {
       .delete()
       .eq('id', id);
     if (error) throw new NotFoundException('Funcionário não encontrado');
+
+    await this.audit?.log({
+      eventType: 'record_deleted',
+      module: 'farm',
+      entity: 'worker',
+      entityId: id,
+      description: 'Funcionário removido',
+      success: true,
+    });
+
     return { message: 'Funcionário removido' };
   }
 }

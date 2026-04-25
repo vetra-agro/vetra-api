@@ -1,11 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreateFarmDto } from './dto/create-farm.dto';
 import { UpdateFarmDto } from './dto/update-farm.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class FarmsService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   async create(userId: string, dto: CreateFarmDto) {
     const { data, error } = await this.supabase.getClient()
@@ -14,6 +18,19 @@ export class FarmsService {
       .select()
       .single();
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      eventType: 'record_created',
+      module: 'farm',
+      entity: 'farm',
+      entityId: data.id,
+      entityLabel: data.name,
+      description: 'Fazenda criada',
+      newValues: dto,
+      success: true,
+    });
+
     return data;
   }
 
@@ -47,6 +64,19 @@ export class FarmsService {
       .select()
       .single();
     if (error || !data) throw new NotFoundException('Fazenda não encontrada');
+
+    await this.audit?.log({
+      userId,
+      eventType: 'record_updated',
+      module: 'farm',
+      entity: 'farm',
+      entityId: id,
+      entityLabel: data.name,
+      description: 'Fazenda atualizada',
+      newValues: dto,
+      success: true,
+    });
+
     return data;
   }
 
@@ -57,6 +87,17 @@ export class FarmsService {
       .eq('id', id)
       .eq('owner_id', userId);
     if (error) throw new NotFoundException('Fazenda não encontrada');
+
+    await this.audit?.log({
+      userId,
+      eventType: 'record_deleted',
+      module: 'farm',
+      entity: 'farm',
+      entityId: id,
+      description: 'Fazenda removida',
+      success: true,
+    });
+
     return { message: 'Fazenda removida com sucesso' };
   }
 }

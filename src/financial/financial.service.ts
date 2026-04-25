@@ -1,10 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class FinancialService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   async create(farmId: string, dto: CreateTransactionDto) {
     const { data, error } = await this.supabase.getClient()
@@ -13,6 +17,18 @@ export class FinancialService {
       .select()
       .single();
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      eventType: 'record_created',
+      module: 'financial',
+      entity: 'transaction',
+      entityId: data.id,
+      description: 'Transação financeira criada',
+      metadata: { farmId },
+      newValues: dto,
+      success: true,
+    });
+
     return data;
   }
 

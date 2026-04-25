@@ -1,11 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateLicenseDto } from './dto/update-license.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class LicensesService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   private get db() { return this.supabase.getAdminClient(); }
 
@@ -75,6 +79,23 @@ export class LicensesService {
     // Registra no histórico
     await this.addHistory(license.id, tenant.id, 'created', null, dto.plan, null, 'trial', userId);
 
+    await this.audit?.log({
+      userId,
+      tenantId: tenant.id,
+      eventType: 'license_changed',
+      module: 'licenses',
+      entity: 'license',
+      entityId: license.id,
+      entityLabel: tenant.name,
+      description: 'Tenant e licença inicial criados',
+      newValues: {
+        plan: license.plan,
+        status: license.status,
+        modules: license.modules,
+      },
+      success: true,
+    });
+
     return { tenant, license };
   }
 
@@ -131,6 +152,30 @@ export class LicensesService {
       current.status, dto.status ?? current.status,
       userId, dto.notes,
     );
+
+    await this.audit?.log({
+      userId,
+      tenantId,
+      eventType: 'license_changed',
+      module: 'licenses',
+      entity: 'license',
+      entityId: current.id,
+      description: 'Licença atualizada',
+      oldValues: {
+        plan: current.plan,
+        status: current.status,
+      },
+      newValues: {
+        plan: dto.plan ?? current.plan,
+        status: dto.status ?? current.status,
+        modules: dto.modules,
+        maxUsers: dto.maxUsers,
+        maxFarms: dto.maxFarms,
+        expiresAt: dto.expiresAt,
+      },
+      metadata: { event },
+      success: true,
+    });
 
     // Sincroniza menu_modules com os módulos ativos da licença
     await this.syncModules(data.modules);

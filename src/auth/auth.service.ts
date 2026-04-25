@@ -1,11 +1,15 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { SignInDto } from './dto/sign-in.dto';
 import { SignUpDto } from './dto/sign-up.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class AuthService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   async signUp(dto: SignUpDto) {
     const { data, error } = await this.supabase.getClient().auth.signUp({
@@ -14,6 +18,21 @@ export class AuthService {
       options: { data: { full_name: dto.fullName, role: 'owner' } },
     });
     if (error) throw new ConflictException(error.message);
+
+    await this.audit?.log({
+      userId: data.user?.id,
+      userEmail: data.user?.email ?? dto.email,
+      userName: dto.fullName,
+      userRole: 'owner',
+      eventType: 'record_created',
+      module: 'auth',
+      entity: 'user',
+      entityId: data.user?.id,
+      entityLabel: dto.fullName,
+      description: 'Novo usuário cadastrado',
+      success: true,
+    });
+
     return { user: data.user, session: data.session };
   }
 
@@ -23,8 +42,31 @@ export class AuthService {
       password: dto.password,
     });
     if (error || !data.session || !data.user) {
+      await this.audit?.log({
+        userEmail: dto.email,
+        eventType: 'login_failed',
+        module: 'auth',
+        entity: 'session',
+        description: 'Tentativa de login inválida',
+        success: false,
+        errorMessage: error?.message ?? 'Credenciais inválidas',
+      });
       throw new UnauthorizedException('Credenciais inválidas');
     }
+
+    await this.audit?.log({
+      userId: data.user.id,
+      userEmail: data.user.email,
+      userName: data.user.user_metadata?.full_name,
+      userRole: data.user.user_metadata?.role,
+      eventType: 'login_success',
+      module: 'auth',
+      entity: 'session',
+      entityId: data.session.access_token,
+      description: 'Login realizado com sucesso',
+      success: true,
+    });
+
     return {
       accessToken: data.session.access_token,
       refreshToken: data.session.refresh_token,
@@ -41,6 +83,15 @@ export class AuthService {
   async signOut(accessToken: string) {
     const client = this.supabase.getAuthenticatedClient(accessToken);
     await client.auth.signOut();
+
+    await this.audit?.log({
+      eventType: 'logout',
+      module: 'auth',
+      entity: 'session',
+      description: 'Sessão encerrada com sucesso',
+      success: true,
+    });
+
     return { message: 'Sessão encerrada com sucesso' };
   }
 

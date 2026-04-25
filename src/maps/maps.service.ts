@@ -1,9 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class MapsService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   /**
    * Retorna os talhões de uma fazenda como GeoJSON FeatureCollection
@@ -43,6 +47,18 @@ export class MapsService {
       .single();
 
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      eventType: 'record_updated',
+      module: 'farm',
+      entity: 'field',
+      entityId: fieldId,
+      entityLabel: data.name,
+      description: 'Geometria do talhão atualizada',
+      newValues: { geometry },
+      success: true,
+    });
+
     return data;
   }
 }

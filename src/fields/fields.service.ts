@@ -1,11 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreateFieldDto } from './dto/create-field.dto';
 import { UpdateFieldDto } from './dto/update-field.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class FieldsService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   async create(dto: CreateFieldDto) {
     const { data, error } = await this.supabase.getClient()
@@ -14,6 +18,18 @@ export class FieldsService {
       .select()
       .single();
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      eventType: 'record_created',
+      module: 'farm',
+      entity: 'field',
+      entityId: data.id,
+      entityLabel: data.name,
+      description: 'Talhão criado',
+      newValues: dto,
+      success: true,
+    });
+
     return data;
   }
 
@@ -45,6 +61,18 @@ export class FieldsService {
       .select()
       .single();
     if (error || !data) throw new NotFoundException('Talhão não encontrado');
+
+    await this.audit?.log({
+      eventType: 'record_updated',
+      module: 'farm',
+      entity: 'field',
+      entityId: id,
+      entityLabel: data.name,
+      description: 'Talhão atualizado',
+      newValues: dto,
+      success: true,
+    });
+
     return data;
   }
 
@@ -54,6 +82,16 @@ export class FieldsService {
       .delete()
       .eq('id', id);
     if (error) throw new NotFoundException('Talhão não encontrado');
+
+    await this.audit?.log({
+      eventType: 'record_deleted',
+      module: 'farm',
+      entity: 'field',
+      entityId: id,
+      description: 'Talhão removido',
+      success: true,
+    });
+
     return { message: 'Talhão removido com sucesso' };
   }
 }
