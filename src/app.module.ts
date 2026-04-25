@@ -18,6 +18,7 @@ import { MenusModule } from './menus/menus.module';
 import { AclModule } from './acl/acl.module';
 import { LicensesModule } from './licenses/licenses.module';
 import { AuditModule } from './audit/audit.module';
+import { PartnersModule } from './partners/partners.module';
 
 @Module({
   imports: [
@@ -50,7 +51,8 @@ import { AuditModule } from './audit/audit.module';
     UsersModule,
     MenusModule,
     AclModule,
-    LicensesModule,    
+    LicensesModule,
+    PartnersModule,    
   ],
   controllers: [AppController],
   providers: [
