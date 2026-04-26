@@ -54,12 +54,22 @@ export class AuthService {
       });
       throw new UnauthorizedException('Credenciais inválidas');
     }
-    
-    const { data: license } = await this.supabase.getAdminClient()
-      .from('licenses')
-      .select('tenant_id')
-      .limit(1)
-      .single();      
+
+    // ── Busca o tenant_id da licença ativa do usuário ──────────────────────
+    // No PoC, pega o primeiro tenant disponível.
+    // Em multi-tenant real, filtrar por um campo user→tenant na tabela profiles.
+    let tenantId: string | null = null;
+    try {
+      const { data: license } = await this.supabase.getAdminClient()
+        .from('licenses')
+        .select('tenant_id')
+        .in('status', ['active', 'trial'])
+        .limit(1)
+        .single();
+      tenantId = license?.tenant_id ?? null;
+    } catch {
+      // Tenant ainda não criado — OK para PoC
+    }     
 
     await this.audit?.log({
       userId: data.user.id,
@@ -76,7 +86,7 @@ export class AuthService {
 
     return {
       accessToken: data.session.access_token,
-      tenantId: license?.tenant_id,
+      tenantId: tenantId,
       refreshToken: data.session.refresh_token,
       expiresIn: data.session.expires_in,
       user: {
