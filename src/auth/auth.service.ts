@@ -41,6 +41,7 @@ export class AuthService {
       email: dto.email,
       password: dto.password,
     });
+
     if (error || !data.session || !data.user) {
       await this.audit?.log({
         userEmail: dto.email,
@@ -53,6 +54,12 @@ export class AuthService {
       });
       throw new UnauthorizedException('Credenciais inválidas');
     }
+    
+    const { data: license } = await this.supabase.getAdminClient()
+      .from('licenses')
+      .select('tenant_id')
+      .limit(1)
+      .single();      
 
     await this.audit?.log({
       userId: data.user.id,
@@ -69,6 +76,7 @@ export class AuthService {
 
     return {
       accessToken: data.session.access_token,
+      tenantId: license?.tenant_id,
       refreshToken: data.session.refresh_token,
       expiresIn: data.session.expires_in,
       user: {
