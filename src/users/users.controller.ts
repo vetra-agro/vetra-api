@@ -1,8 +1,22 @@
 import {
-  Controller, Get, Post, Put, Patch, Delete,
-  Param, Body, Query, UseGuards,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -18,11 +32,11 @@ export class UsersController {
 
   @Get()
   @ApiOperation({ summary: 'Listar usuários' })
-  @ApiQuery({ name: 'role',   required: false })
+  @ApiQuery({ name: 'role', required: false })
   @ApiQuery({ name: 'active', required: false, type: Boolean })
   @ApiQuery({ name: 'search', required: false })
   findAll(
-    @Query('role')   role?: string,
+    @Query('role') role?: string,
     @Query('active') active?: string,
     @Query('search') search?: string,
   ) {
@@ -41,8 +55,8 @@ export class UsersController {
 
   @Post()
   @ApiOperation({ summary: 'Criar usuário' })
-  create(@Body() dto: CreateUserDto) {
-    return this.usersService.create(dto);
+  create(@Body() dto: CreateUserDto, @Req() req: { user?: { id?: string } }) {
+    return this.usersService.create(dto, req.user?.id);
   }
 
   @Put(':id')

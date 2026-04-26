@@ -1,6 +1,9 @@
 import {
-  Injectable, NotFoundException, Optional,
-  ConflictException, BadRequestException,
+  Injectable,
+  NotFoundException,
+  Optional,
+  ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -30,10 +33,30 @@ export class UsersService {
     return errorMessage.toLowerCase().includes('database error creating new user');
   }
 
+  private async getCreatorTenantId(
+    creatorUserId?: string,
+  ): Promise<string | undefined> {
+    if (!creatorUserId) return undefined;
+
+    try {
+      const { data } = await this.supabase
+        .getAdminClient()
+        .from('profiles')
+        .select('*')
+        .eq('id', creatorUserId)
+        .maybeSingle();
+
+      return (data as any)?.tenant_id ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async createAuthUserWithFallback(
     admin: ReturnType<SupabaseProvider['getAdminClient']>,
     dto: CreateUserDto,
     normalizedEmail: string,
+    tenantId?: string,
   ) {
     const basePayload = {
       email: normalizedEmail,
@@ -45,6 +68,7 @@ export class UsersService {
       ...basePayload,
       user_metadata: {
         full_name: dto.fullName,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
       },
     });
 
@@ -56,6 +80,7 @@ export class UsersService {
 
     const retryAttempt = await admin.auth.admin.createUser({
       ...basePayload,
+      user_metadata: tenantId ? { tenant_id: tenantId } : undefined,
     });
 
     if (retryAttempt.error) this.mapCreateUserError(retryAttempt.error.message);
@@ -86,7 +111,6 @@ export class UsersService {
     return null;
   }
 
-  // ── Listar todos os usuários ────────────────────────────────
   async findAll(filters?: { role?: string; active?: boolean; search?: string }) {
     let query = this.supabase
       .getAdminClient()
@@ -94,11 +118,11 @@ export class UsersService {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (filters?.role)            query = query.eq('role', filters.role);
-    if (filters?.active != null)  query = query.eq('active', filters.active);
+    if (filters?.role) query = query.eq('role', filters.role);
+    if (filters?.active != null) query = query.eq('active', filters.active);
     if (filters?.search) {
       query = query.or(
-        `full_name.ilike.%${filters.search}%,email.ilike.%${filters.search}%`
+        `full_name.ilike.%${filters.search}%,email.ilike.%${filters.search}%`,
       );
     }
 
@@ -107,7 +131,6 @@ export class UsersService {
     return data ?? [];
   }
 
-  // ── Buscar usuário por ID ──────────────────────────────────
   async findOne(id: string) {
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -120,12 +143,11 @@ export class UsersService {
     return data;
   }
 
-  // ── Criar usuário (auth + profile) ────────────────────────
-  async create(dto: CreateUserDto) {
+  async create(dto: CreateUserDto, creatorUserId?: string) {
     const admin = this.supabase.getAdminClient();
     const normalizedEmail = dto.email.trim().toLowerCase();
+    const creatorTenantId = await this.getCreatorTenantId(creatorUserId);
 
-    // Verifica email duplicado
     const { data: existing } = await admin
       .from('profiles')
       .select('id')
@@ -134,38 +156,36 @@ export class UsersService {
 
     if (existing) throw new ConflictException('Email já cadastrado');
 
-    // Cria no Supabase Auth (trigger cria o profile automaticamente)
     const { data } = await this.createAuthUserWithFallback(
       admin,
       dto,
       normalizedEmail,
+      creatorTenantId,
     );
 
     if (!data.user?.id) {
-      throw new BadRequestException('Falha ao criar usuário no provedor de autenticação');
+      throw new BadRequestException(
+        'Falha ao criar usuário no provedor de autenticação',
+      );
     }
 
     const userId = data.user.id;
 
-    // Garante profile mesmo quando o trigger ainda não executou a tempo.
     const profile = await this.waitForProfile(userId);
     if (!profile) {
-      const { error: upsertError } = await admin
-        .from('profiles')
-        .upsert(
-          {
-            id: userId,
-            email: normalizedEmail,
-            full_name: dto.fullName,
-            role: dto.role,
-          },
-          { onConflict: 'id' },
-        );
+      const { error: upsertError } = await admin.from('profiles').upsert(
+        {
+          id: userId,
+          email: normalizedEmail,
+          full_name: dto.fullName,
+          role: dto.role,
+        },
+        { onConflict: 'id' },
+      );
 
       if (upsertError) throw new BadRequestException(upsertError.message);
     }
 
-    // Garante role e demais campos em linha, inclusive após fallback sem role no metadata.
     const { error: profileUpdateError } = await admin
       .from('profiles')
       .update({
@@ -175,7 +195,8 @@ export class UsersService {
       })
       .eq('id', userId);
 
-    if (profileUpdateError) throw new BadRequestException(profileUpdateError.message);
+    if (profileUpdateError)
+      throw new BadRequestException(profileUpdateError.message);
 
     const createdUser = await this.findOne(userId);
 
@@ -196,17 +217,16 @@ export class UsersService {
     return createdUser;
   }
 
-  // ── Atualizar perfil ───────────────────────────────────────
   async update(id: string, dto: UpdateUserDto) {
-    const previous = await this.findOne(id); // valida existência
+    const previous = await this.findOne(id);
 
     const { error } = await this.supabase
       .getAdminClient()
       .from('profiles')
       .update({
         ...(dto.fullName ? { full_name: dto.fullName } : {}),
-        ...(dto.role     ? { role: dto.role }          : {}),
-        ...(dto.phone    ? { phone: dto.phone }        : {}),
+        ...(dto.role ? { role: dto.role } : {}),
+        ...(dto.phone ? { phone: dto.phone } : {}),
       })
       .eq('id', id);
 
@@ -241,7 +261,6 @@ export class UsersService {
     return updated;
   }
 
-  // ── Ativar / inativar ──────────────────────────────────────
   async setActive(id: string, active: boolean) {
     const user = await this.findOne(id);
 
@@ -268,10 +287,13 @@ export class UsersService {
       success: true,
     });
 
-    return { id, active, message: active ? 'Usuário ativado' : 'Usuário inativado' };
+    return {
+      id,
+      active,
+      message: active ? 'Usuário ativado' : 'Usuário inativado',
+    };
   }
 
-  // ── Reset de senha (gera link magic) ──────────────────────
   async resetPassword(id: string) {
     const user = await this.findOne(id);
 
@@ -298,10 +320,12 @@ export class UsersService {
       success: true,
     });
 
-    return { message: 'Link de recuperação gerado', link: data.properties?.action_link };
+    return {
+      message: 'Link de recuperação gerado',
+      link: data.properties?.action_link,
+    };
   }
 
-  // ── Alterar senha diretamente ──────────────────────────────
   async changePassword(id: string, newPassword: string) {
     const user = await this.findOne(id);
 
@@ -328,7 +352,6 @@ export class UsersService {
     return { message: 'Senha alterada com sucesso' };
   }
 
-  // ── Remover usuário ────────────────────────────────────────
   async remove(id: string) {
     const user = await this.findOne(id);
 
