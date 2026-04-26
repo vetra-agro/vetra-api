@@ -103,6 +103,68 @@ describe('UsersService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('should retry create user without role metadata on database trigger error', async () => {
+    const createUser = jest
+      .fn()
+      .mockResolvedValueOnce({
+        data: { user: null },
+        error: { message: 'Database error creating new user' },
+      })
+      .mockResolvedValueOnce({
+        data: { user: { id: 'user-fallback-id' } },
+        error: null,
+      });
+
+    const adminClient = {
+      from: jest.fn().mockImplementation(() => ({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            maybeSingle: jest.fn().mockResolvedValue({ data: null }),
+          }),
+        }),
+        update: jest.fn().mockReturnValue({
+          eq: jest.fn().mockResolvedValue({ error: null }),
+        }),
+      })),
+      auth: {
+        admin: {
+          createUser,
+        },
+      },
+    };
+
+    const service = getService(adminClient);
+    jest
+      .spyOn(service as any, 'waitForProfile')
+      .mockResolvedValue({ id: 'user-fallback-id' });
+    jest
+      .spyOn(service, 'findOne')
+      .mockResolvedValue({ id: 'user-fallback-id' } as any);
+
+    await expect(
+      service.create({
+        fullName: 'Mega Man',
+        email: 'mega@1.com',
+        password: 'mega@123!',
+        role: 'owner' as any,
+      }),
+    ).resolves.toEqual({ id: 'user-fallback-id' });
+
+    expect(createUser).toHaveBeenCalledTimes(2);
+    expect(createUser).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        user_metadata: expect.objectContaining({ role: 'owner' }),
+      }),
+    );
+    expect(createUser).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        user_metadata: { full_name: 'Mega Man' },
+      }),
+    );
+  });
+
   it('should change password successfully', async () => {
     const updateUserById = jest.fn().mockResolvedValue({ error: null });
 

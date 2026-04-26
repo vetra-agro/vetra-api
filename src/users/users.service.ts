@@ -26,6 +26,47 @@ export class UsersService {
     throw new BadRequestException(errorMessage);
   }
 
+  private isDatabaseCreateUserError(errorMessage: string): boolean {
+    return errorMessage.toLowerCase().includes('database error creating new user');
+  }
+
+  private async createAuthUserWithFallback(
+    admin: ReturnType<SupabaseProvider['getAdminClient']>,
+    dto: CreateUserDto,
+    normalizedEmail: string,
+  ) {
+    const basePayload = {
+      email: normalizedEmail,
+      password: dto.password,
+      email_confirm: true,
+    };
+
+    const firstAttempt = await admin.auth.admin.createUser({
+      ...basePayload,
+      user_metadata: {
+        full_name: dto.fullName,
+        role: dto.role,
+      },
+    });
+
+    if (!firstAttempt.error) return firstAttempt;
+
+    if (!this.isDatabaseCreateUserError(firstAttempt.error.message)) {
+      this.mapCreateUserError(firstAttempt.error.message);
+    }
+
+    const retryAttempt = await admin.auth.admin.createUser({
+      ...basePayload,
+      user_metadata: {
+        full_name: dto.fullName,
+      },
+    });
+
+    if (retryAttempt.error) this.mapCreateUserError(retryAttempt.error.message);
+
+    return retryAttempt;
+  }
+
   private async findProfileById(id: string) {
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -98,17 +139,11 @@ export class UsersService {
     if (existing) throw new ConflictException('Email já cadastrado');
 
     // Cria no Supabase Auth (trigger cria o profile automaticamente)
-    const { data, error } = await admin.auth.admin.createUser({
-      email: normalizedEmail,
-      password: dto.password,
-      email_confirm: true,  // confirma automaticamente no PoC
-      user_metadata: {
-        full_name: dto.fullName,
-        role: dto.role,
-      },
-    });
-
-    if (error) this.mapCreateUserError(error.message);
+    const { data } = await this.createAuthUserWithFallback(
+      admin,
+      dto,
+      normalizedEmail,
+    );
 
     if (!data.user?.id) {
       throw new BadRequestException('Falha ao criar usuário no provedor de autenticação');
@@ -134,17 +169,17 @@ export class UsersService {
       if (upsertError) throw new BadRequestException(upsertError.message);
     }
 
-    // Atualiza campos extras no profile
-    if (dto.phone) {
-      const { error: profileUpdateError } = await admin
-        .from('profiles')
-        .update({
-          phone: dto.phone,
-        })
-        .eq('id', userId);
+    // Garante role e demais campos em linha, inclusive após fallback sem role no metadata.
+    const { error: profileUpdateError } = await admin
+      .from('profiles')
+      .update({
+        full_name: dto.fullName,
+        role: dto.role,
+        ...(dto.phone ? { phone: dto.phone } : {}),
+      })
+      .eq('id', userId);
 
-      if (profileUpdateError) throw new BadRequestException(profileUpdateError.message);
-    }
+    if (profileUpdateError) throw new BadRequestException(profileUpdateError.message);
 
     const createdUser = await this.findOne(userId);
 
