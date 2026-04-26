@@ -166,6 +166,58 @@ describe('UsersService', () => {
     );
   });
 
+  it('should recover orphan auth user when profile does not exist', async () => {
+    const createUser = jest.fn();
+    const listUsers = jest.fn().mockResolvedValue({
+      data: {
+        users: [
+          {
+            id: 'orphan-auth-id',
+            email: 'orphan@vetra.com',
+          },
+        ],
+      },
+      error: null,
+    });
+
+    const adminClient = {
+      from: jest.fn().mockImplementation(() => ({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            maybeSingle: jest.fn().mockResolvedValue({ data: null }),
+          }),
+        }),
+        update: jest.fn().mockReturnValue({
+          eq: jest.fn().mockResolvedValue({ error: null }),
+        }),
+      })),
+      auth: {
+        admin: {
+          createUser,
+          listUsers,
+        },
+      },
+    };
+
+    const service = getService(adminClient);
+    jest
+      .spyOn(service as any, 'waitForProfile')
+      .mockResolvedValue({ id: 'orphan-auth-id' });
+    jest.spyOn(service, 'findOne').mockResolvedValue({ id: 'orphan-auth-id' } as any);
+
+    await expect(
+      service.create({
+        fullName: 'Orphan User',
+        email: 'orphan@vetra.com',
+        password: 'orphan@123',
+        role: 'manager' as any,
+      }),
+    ).resolves.toEqual({ id: 'orphan-auth-id' });
+
+    expect(createUser).not.toHaveBeenCalled();
+    expect(listUsers).toHaveBeenCalled();
+  });
+
   it('should change password successfully', async () => {
     const updateUserById = jest.fn().mockResolvedValue({ error: null });
 

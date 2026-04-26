@@ -4,6 +4,7 @@ import {
   Optional,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -12,10 +13,37 @@ import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private supabase: SupabaseProvider,
     @Optional() private audit?: AuditService,
   ) {}
+
+  private formatAuthError(error: unknown) {
+    if (!error || typeof error !== 'object') {
+      return { raw: String(error) };
+    }
+
+    const maybeError = error as {
+      message?: string;
+      code?: string;
+      status?: number;
+      name?: string;
+      cause?: unknown;
+    };
+
+    return {
+      name: maybeError.name,
+      message: maybeError.message,
+      code: maybeError.code,
+      status: maybeError.status,
+      cause:
+        maybeError.cause && typeof maybeError.cause === 'object'
+          ? maybeError.cause
+          : undefined,
+    };
+  }
 
   private mapCreateUserError(errorMessage: string): never {
     const message = errorMessage.toLowerCase();
@@ -74,6 +102,12 @@ export class UsersService {
 
     if (!firstAttempt.error) return firstAttempt;
 
+    this.logger.error('createUser first attempt failed', {
+      email: normalizedEmail,
+      withTenant: Boolean(tenantId),
+      details: this.formatAuthError(firstAttempt.error),
+    });
+
     if (!this.isDatabaseCreateUserError(firstAttempt.error.message)) {
       this.mapCreateUserError(firstAttempt.error.message);
     }
@@ -83,9 +117,70 @@ export class UsersService {
       user_metadata: tenantId ? { tenant_id: tenantId } : undefined,
     });
 
-    if (retryAttempt.error) this.mapCreateUserError(retryAttempt.error.message);
+    if (retryAttempt.error) {
+      this.logger.error('createUser retry attempt failed', {
+        email: normalizedEmail,
+        withTenant: Boolean(tenantId),
+        details: this.formatAuthError(retryAttempt.error),
+      });
+
+      if (this.isDatabaseCreateUserError(retryAttempt.error.message)) {
+        const existingAuthUser = await this.findAuthUserByEmail(
+          admin,
+          normalizedEmail,
+        );
+
+        if (existingAuthUser) {
+          this.logger.warn('Recovered existing auth user after createUser failure', {
+            email: normalizedEmail,
+            userId: existingAuthUser.id,
+          });
+
+          return {
+            data: { user: existingAuthUser },
+            error: null,
+          };
+        }
+      }
+
+      this.mapCreateUserError(retryAttempt.error.message);
+    }
 
     return retryAttempt;
+  }
+
+  private async findAuthUserByEmail(
+    admin: ReturnType<SupabaseProvider['getAdminClient']>,
+    email: string,
+  ) {
+    if (typeof admin.auth?.admin?.listUsers !== 'function') return null;
+
+    const normalized = email.trim().toLowerCase();
+    let page = 1;
+    const perPage = 200;
+
+    while (page <= 10) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+
+      if (error) {
+        this.logger.error('listUsers failed while recovering auth user', {
+          email: normalized,
+          details: this.formatAuthError(error),
+        });
+        return null;
+      }
+
+      const users = data?.users ?? [];
+      const found = users.find(
+        (user) => user.email?.trim().toLowerCase() === normalized,
+      );
+
+      if (found) return found;
+      if (users.length < perPage) break;
+      page += 1;
+    }
+
+    return null;
   }
 
   private async findProfileById(id: string) {
@@ -156,20 +251,23 @@ export class UsersService {
 
     if (existing) throw new ConflictException('Email já cadastrado');
 
-    const { data } = await this.createAuthUserWithFallback(
-      admin,
-      dto,
-      normalizedEmail,
-      creatorTenantId,
-    );
+    const existingAuthUser = await this.findAuthUserByEmail(admin, normalizedEmail);
 
-    if (!data.user?.id) {
+    const userId = existingAuthUser
+      ? existingAuthUser.id
+      : (
+          await this.createAuthUserWithFallback(
+            admin,
+            dto,
+            normalizedEmail,
+            creatorTenantId,
+          )
+        ).data.user?.id;
+
+    if (!userId)
       throw new BadRequestException(
         'Falha ao criar usuário no provedor de autenticação',
       );
-    }
-
-    const userId = data.user.id;
 
     const profile = await this.waitForProfile(userId);
     if (!profile) {
