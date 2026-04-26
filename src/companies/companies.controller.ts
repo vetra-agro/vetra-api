@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Param, Body, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Put, Param, Body, Query, UseGuards, Req } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { CompaniesService } from "./companies.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -29,7 +29,7 @@ export class CompaniesController {
 
   @Put(":id")
   @ApiOperation({ summary: "Atualizar dados da empresa" })
-  update(@Param("id") id: string, @Body() dto: any) {
-    return this.companiesService.update(id, dto);
+  update(@Param("id") id: string, @Body() dto: any, @Req() req: any) {
+    return this.companiesService.update(id, dto, req.user?.id);
   }
 }

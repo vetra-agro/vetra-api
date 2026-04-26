@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
 import { CreatePartnerDto } from './dto/create-partner.dto';
 import { UpdatePartnerDto } from './dto/update-partner.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
+import { AuditService } from '../audit/audit.service';
 
 export interface PartnerFilters {
   type?:     string;
@@ -16,7 +17,10 @@ export interface PartnerFilters {
 
 @Injectable()
 export class PartnersService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   private get db() { return this.supabase.getAdminClient(); }
 
@@ -118,12 +122,26 @@ export class PartnersService {
       .single();
 
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId: dto.tenantId,
+      eventType: 'record_created',
+      module: 'partners',
+      entity: 'partner',
+      entityId: data.id,
+      entityLabel: data.name,
+      description: 'Parceiro criado',
+      newValues: dto as any,
+      success: true,
+    });
+
     return data;
   }
 
   // ── Atualizar parceiro ───────────────────────────────────────────────────
-  async update(id: string, dto: UpdatePartnerDto) {
-    await this.findOne(id);
+  async update(id: string, dto: UpdatePartnerDto, userId?: string) {
+    const previous = await this.findOne(id);
     const updates: any = {};
     const map: Record<string, string> = {
       types:'types', personType:'person_type', name:'name',
@@ -147,44 +165,118 @@ export class PartnersService {
     const { data, error } = await this.db
       .from('partners').update(updates).eq('id', id).select().single();
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId: data.tenant_id,
+      eventType: 'record_updated',
+      module: 'partners',
+      entity: 'partner',
+      entityId: id,
+      entityLabel: data.name,
+      description: 'Parceiro atualizado',
+      oldValues: previous,
+      newValues: updates,
+      success: true,
+    });
+
     return data;
   }
 
   // ── Ativar / inativar / bloquear ─────────────────────────────────────────
-  async setStatus(id: string, status: 'active' | 'inactive' | 'blocked') {
-    await this.findOne(id);
+  async setStatus(id: string, status: 'active' | 'inactive' | 'blocked', userId?: string) {
+    const previous = await this.findOne(id);
     const { error } = await this.db
       .from('partners').update({ status }).eq('id', id);
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId: previous.tenant_id,
+      eventType: 'record_updated',
+      module: 'partners',
+      entity: 'partner',
+      entityId: id,
+      entityLabel: previous.name,
+      description: 'Status do parceiro atualizado',
+      oldValues: { status: previous.status },
+      newValues: { status },
+      success: true,
+    });
+
     return { id, status };
   }
 
   // ── Remover parceiro ─────────────────────────────────────────────────────
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, userId?: string) {
+    const previous = await this.findOne(id);
     const { error } = await this.db.from('partners').delete().eq('id', id);
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId: previous.tenant_id,
+      eventType: 'record_deleted',
+      module: 'partners',
+      entity: 'partner',
+      entityId: id,
+      entityLabel: previous.name,
+      description: 'Parceiro removido',
+      oldValues: previous,
+      success: true,
+    });
+
     return { message: 'Parceiro removido com sucesso' };
   }
 
   // ── Contatos ─────────────────────────────────────────────────────────────
-  async addContact(partnerId: string, dto: CreateContactDto) {
-    await this.findOne(partnerId);
+  async addContact(partnerId: string, dto: CreateContactDto, userId?: string) {
+    const partner = await this.findOne(partnerId);
     const { data, error } = await this.db
       .from('partner_contacts')
       .insert({ partner_id: partnerId, ...dto })
       .select().single();
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId: partner.tenant_id,
+      eventType: 'record_created',
+      module: 'partners',
+      entity: 'partner_contact',
+      entityId: data.id,
+      entityLabel: data.name,
+      description: 'Contato de parceiro adicionado',
+      metadata: { partnerId },
+      newValues: dto as any,
+      success: true,
+    });
+
     return data;
   }
 
-  async removeContact(partnerId: string, contactId: string) {
+  async removeContact(partnerId: string, contactId: string, userId?: string) {
+    const partner = await this.findOne(partnerId);
+
     const { error } = await this.db
       .from('partner_contacts')
       .delete()
       .eq('id', contactId)
       .eq('partner_id', partnerId);
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId: partner.tenant_id,
+      eventType: 'record_deleted',
+      module: 'partners',
+      entity: 'partner_contact',
+      entityId: contactId,
+      description: 'Contato de parceiro removido',
+      metadata: { partnerId },
+      success: true,
+    });
+
     return { message: 'Contato removido' };
   }
 

@@ -32,7 +32,11 @@ export class IntegrationsController {
   @Post(":key/test")
   @ApiOperation({ summary: "Testar conexão de uma integração" })
   @ApiQuery({ name: "tenantId", required: true })
-  test(@Param("key") key: string, @Query("tenantId") tenantId: string) {
-    return this.integrationsService.testIntegration(tenantId, key);
+  test(
+    @Param("key") key: string,
+    @Query("tenantId") tenantId: string,
+    @Req() req: any,
+  ) {
+    return this.integrationsService.testIntegration(tenantId, key, req.user?.id);
   }
 }

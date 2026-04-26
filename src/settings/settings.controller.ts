@@ -59,15 +59,16 @@ export class SettingsController {
   reset(
     @Param('key') key: string,
     @Query('tenantId') tenantId: string,
+    @Req() req: any,
   ) {
-    return this.settingsService.reset(tenantId, key);
+    return this.settingsService.reset(tenantId, key, req.user?.id);
   }
 
   @Delete('reset-all')
   @ApiOperation({ summary: 'Resetar todas as configurações para os padrões' })
   @ApiQuery({ name: 'tenantId', required: true })
-  resetAll(@Query('tenantId') tenantId: string) {
-    return this.settingsService.resetAll(tenantId);
+  resetAll(@Query('tenantId') tenantId: string, @Req() req: any) {
+    return this.settingsService.resetAll(tenantId, req.user?.id);
   }
 
   @Post('test-smtp')

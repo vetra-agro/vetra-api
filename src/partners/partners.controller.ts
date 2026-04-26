@@ -60,8 +60,8 @@ export class PartnersController {
 
   @Put(':id')
   @ApiOperation({ summary: 'Atualizar parceiro' })
-  update(@Param('id') id: string, @Body() dto: UpdatePartnerDto) {
-    return this.partnersService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdatePartnerDto, @Req() req: any) {
+    return this.partnersService.update(id, dto, req.user?.id);
   }
 
   @Patch(':id/status')
@@ -69,23 +69,24 @@ export class PartnersController {
   setStatus(
     @Param('id') id: string,
     @Body('status') status: 'active' | 'inactive' | 'blocked',
-  ) { return this.partnersService.setStatus(id, status); }
+    @Req() req: any,
+  ) { return this.partnersService.setStatus(id, status, req.user?.id); }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Remover parceiro' })
-  remove(@Param('id') id: string) {
-    return this.partnersService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.partnersService.remove(id, req.user?.id);
   }
 
   @Post(':id/contacts')
   @ApiOperation({ summary: 'Adicionar contato ao parceiro' })
-  addContact(@Param('id') id: string, @Body() dto: CreateContactDto) {
-    return this.partnersService.addContact(id, dto);
+  addContact(@Param('id') id: string, @Body() dto: CreateContactDto, @Req() req: any) {
+    return this.partnersService.addContact(id, dto, req.user?.id);
   }
 
   @Delete(':id/contacts/:contactId')
   @ApiOperation({ summary: 'Remover contato do parceiro' })
-  removeContact(@Param('id') id: string, @Param('contactId') contactId: string) {
-    return this.partnersService.removeContact(id, contactId);
+  removeContact(@Param('id') id: string, @Param('contactId') contactId: string, @Req() req: any) {
+    return this.partnersService.removeContact(id, contactId, req.user?.id);
   }
 }

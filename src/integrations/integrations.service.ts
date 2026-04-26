@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { SupabaseProvider } from "../database/supabase.provider";
+import { AuditService } from "../audit/audit.service";
 
 export interface IntegrationStatus {
   key:         string;
@@ -90,7 +91,10 @@ const INTEGRATIONS_CATALOG = [
 
 @Injectable()
 export class IntegrationsService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   private get db() { return this.supabase.getAdminClient(); }
 
@@ -170,19 +174,65 @@ export class IntegrationsService {
       .upsert(rows, { onConflict: "tenant_id,key" });
 
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId,
+      eventType: "settings_changed",
+      module: "integrations",
+      entity: "integration",
+      entityId: integrationKey,
+      entityLabel: catalog.name,
+      description: "Configuração de integração atualizada",
+      metadata: { integrationKey },
+      newValues: values,
+      success: true,
+    });
+
     return { saved: rows.length };
   }
 
   // ── Testar conexão de uma integração ─────────────────────────────────────
-  async testIntegration(tenantId: string, integrationKey: string) {
+  async testIntegration(tenantId: string, integrationKey: string, userId?: string) {
     const integrations = await this.getAll(tenantId);
     const intg = integrations.find((i) => i.key === integrationKey);
 
-    if (!intg) return { success: false, message: "Integração não encontrada" };
-    if (!intg.configured) return { success: false, message: "Integração não configurada" };
+    if (!intg) {
+      const result = { success: false, message: "Integração não encontrada" };
+      await this.audit?.log({
+        userId,
+        tenantId,
+        eventType: "record_viewed",
+        module: "integrations",
+        entity: "integration",
+        entityId: integrationKey,
+        description: "Teste de integração solicitado para chave inexistente",
+        success: false,
+        errorMessage: result.message,
+      });
+      return result;
+    }
+
+    if (!intg.configured) {
+      const result = { success: false, message: "Integração não configurada" };
+      await this.audit?.log({
+        userId,
+        tenantId,
+        eventType: "record_viewed",
+        module: "integrations",
+        entity: "integration",
+        entityId: integrationKey,
+        entityLabel: intg.name,
+        description: "Teste de integração executado sem configuração completa",
+        success: false,
+        errorMessage: result.message,
+      });
+      return result;
+    }
 
     // Testes reais por tipo
     try {
+      let result: { success: boolean; message: string };
       switch (integrationKey) {
         case "maps": {
           const keyField = intg.fields.find((f) => f.key === "int_maps_key");
@@ -192,12 +242,14 @@ export class IntegrationsService {
               `https://api.maptiler.com/maps/streets/style.json?key=${keyField.value}`,
               { method: "HEAD" }
             );
-            return {
+            result = {
               success: res.ok,
               message: res.ok ? "MapTiler conectado com sucesso" : `Erro ${res.status} — verifique a chave API`,
             };
+            break;
           }
-          return { success: true, message: "Configuração de mapas salva" };
+          result = { success: true, message: "Configuração de mapas salva" };
+          break;
         }
 
         case "weather": {
@@ -207,14 +259,16 @@ export class IntegrationsService {
               `https://api.openweathermap.org/data/2.5/weather?q=Brasilia&appid=${keyField.value}`
             );
             const data = await res.json();
-            return {
+            result = {
               success: res.ok,
               message: res.ok
                 ? `OpenWeatherMap conectado — ${data.name ?? "OK"}`
                 : `Erro: ${data.message ?? "Chave inválida"}`,
             };
+            break;
           }
-          return { success: false, message: "Chave não configurada" };
+          result = { success: false, message: "Chave não configurada" };
+          break;
         }
 
         case "bi": {
@@ -224,22 +278,55 @@ export class IntegrationsService {
               const res = await fetch(`${urlField.value}/health`, {
                 signal: AbortSignal.timeout(5000),
               });
-              return {
+              result = {
                 success: res.ok || res.status === 401,
                 message: res.ok ? "BI acessível" : `Status ${res.status} — verifique a URL`,
               };
+              break;
             } catch {
-              return { success: false, message: "Não foi possível conectar à URL do BI" };
+              result = { success: false, message: "Não foi possível conectar à URL do BI" };
+              break;
             }
           }
-          return { success: false, message: "URL não configurada" };
+          result = { success: false, message: "URL não configurada" };
+          break;
         }
 
         default:
-          return { success: true, message: "Configuração salva — teste manual necessário" };
+          result = { success: true, message: "Configuração salva — teste manual necessário" };
       }
+
+      await this.audit?.log({
+        userId,
+        tenantId,
+        eventType: "record_viewed",
+        module: "integrations",
+        entity: "integration",
+        entityId: integrationKey,
+        entityLabel: intg.name,
+        description: "Teste de integração executado",
+        metadata: { integrationKey },
+        success: result.success,
+        errorMessage: result.success ? undefined : result.message,
+      });
+
+      return result;
     } catch (e: any) {
-      return { success: false, message: e.message ?? "Erro ao testar integração" };
+      const result = { success: false, message: e.message ?? "Erro ao testar integração" };
+      await this.audit?.log({
+        userId,
+        tenantId,
+        eventType: "record_viewed",
+        module: "integrations",
+        entity: "integration",
+        entityId: integrationKey,
+        entityLabel: intg.name,
+        description: "Teste de integração executado com erro",
+        metadata: { integrationKey },
+        success: false,
+        errorMessage: result.message,
+      });
+      return result;
     }
   }
 }

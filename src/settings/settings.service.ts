@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { SupabaseProvider } from '../database/supabase.provider';
+import { AuditService } from '../audit/audit.service';
 
 export interface Setting {
   id:            string;
@@ -21,7 +22,10 @@ export interface Setting {
 
 @Injectable()
 export class SettingsService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   private get db() { return this.supabase.getAdminClient(); }
 
@@ -102,6 +106,13 @@ export class SettingsService {
 
     if (!def) throw new NotFoundException(`Chave '${key}' não encontrada`);
 
+    const { data: previous } = await this.db
+      .from('settings')
+      .select('value')
+      .eq('tenant_id', tenantId)
+      .eq('key', key)
+      .maybeSingle();
+
     // Upsert no tenant override
     const { data, error } = await this.db
       .from('settings')
@@ -121,6 +132,21 @@ export class SettingsService {
       .single();
 
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId,
+      eventType: 'settings_changed',
+      module: 'settings',
+      entity: 'setting',
+      entityId: key,
+      entityLabel: def.label ?? key,
+      description: 'Configuração atualizada',
+      oldValues: { value: previous?.value ?? null },
+      newValues: { value },
+      success: true,
+    });
+
     return data;
   }
 
@@ -145,23 +171,56 @@ export class SettingsService {
   }
 
   // ── Resetar uma configuração para o valor padrão ─────────────────────────
-  async reset(tenantId: string, key: string) {
+  async reset(tenantId: string, key: string, userId?: string) {
+    const { data: previous } = await this.db
+      .from('settings')
+      .select('value')
+      .eq('tenant_id', tenantId)
+      .eq('key', key)
+      .maybeSingle();
+
     await this.db
       .from('settings')
       .delete()
       .eq('tenant_id', tenantId)
       .eq('key', key);
+
+    await this.audit?.log({
+      userId,
+      tenantId,
+      eventType: 'settings_changed',
+      module: 'settings',
+      entity: 'setting',
+      entityId: key,
+      entityLabel: key,
+      description: 'Configuração resetada para o valor padrão',
+      oldValues: { value: previous?.value ?? null },
+      success: true,
+    });
+
     return { key, reset: true };
   }
 
   // ── Resetar todas as configurações do tenant ─────────────────────────────
-  async resetAll(tenantId: string) {
+  async resetAll(tenantId: string, userId?: string) {
     const { error } = await this.db
       .from('settings')
       .delete()
       .eq('tenant_id', tenantId)
       .eq('is_system', false);
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId,
+      eventType: 'settings_changed',
+      module: 'settings',
+      entity: 'setting',
+      entityLabel: 'all',
+      description: 'Todas as configurações foram restauradas para os padrões',
+      success: true,
+    });
+
     return { reset: true, message: 'Configurações restauradas para os padrões' };
   }
 

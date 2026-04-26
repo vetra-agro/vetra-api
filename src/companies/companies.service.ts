@@ -1,9 +1,13 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { SupabaseProvider } from "../database/supabase.provider";
+import { AuditService } from "../audit/audit.service";
 
 @Injectable()
 export class CompaniesService {
-  constructor(private supabase: SupabaseProvider) {}
+  constructor(
+    private supabase: SupabaseProvider,
+    @Optional() private audit?: AuditService,
+  ) {}
 
   private get db() { return this.supabase.getAdminClient(); }
 
@@ -76,7 +80,13 @@ export class CompaniesService {
   async update(tenantId: string, dto: {
     name?: string; email?: string; phone?: string;
     city?: string; state?: string; document?: string;
-  }) {
+  }, userId?: string) {
+    const { data: previous } = await this.db
+      .from("tenants")
+      .select("*")
+      .eq("id", tenantId)
+      .maybeSingle();
+
     const { data, error } = await this.db
       .from("tenants")
       .update(dto)
@@ -84,6 +94,21 @@ export class CompaniesService {
       .select()
       .single();
     if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId,
+      tenantId,
+      eventType: "record_updated",
+      module: "companies",
+      entity: "tenant",
+      entityId: tenantId,
+      entityLabel: data.name,
+      description: "Dados da empresa atualizados",
+      oldValues: previous ?? undefined,
+      newValues: dto,
+      success: true,
+    });
+
     return data;
   }
 
