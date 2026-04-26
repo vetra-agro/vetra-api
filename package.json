@@ -22,6 +22,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:e2e:auth": "jest --config ./test/jest-e2e.json --testPathPattern=users-auth-flow.e2e-spec.ts",
     "test:e2e:partners": "jest --config ./test/jest-e2e.json --testPathPattern=partners-auth-flow.e2e-spec.ts",
+    "test:e2e:companies": "jest --config ./test/jest-e2e.json --testPathPattern=companies-auth-flow.e2e-spec.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts"
   },
   "dependencies": {

@@ -20,6 +20,8 @@ import { LicensesModule } from './licenses/licenses.module';
 import { AuditModule } from './audit/audit.module';
 import { PartnersModule } from './partners/partners.module';
 import { SettingsModule } from './settings/settings.module';
+import { CompaniesModule }    from './companies/companies.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 
 @Module({
   imports: [
@@ -55,6 +57,8 @@ import { SettingsModule } from './settings/settings.module';
     LicensesModule,
     PartnersModule,
     SettingsModule,
+    CompaniesModule,
+    IntegrationsModule,
   ],
   controllers: [AppController],
   providers: [
