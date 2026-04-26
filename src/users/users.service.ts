@@ -45,7 +45,6 @@ export class UsersService {
       ...basePayload,
       user_metadata: {
         full_name: dto.fullName,
-        role: dto.role,
       },
     });
 
@@ -57,9 +56,6 @@ export class UsersService {
 
     const retryAttempt = await admin.auth.admin.createUser({
       ...basePayload,
-      user_metadata: {
-        full_name: dto.fullName,
-      },
     });
 
     if (retryAttempt.error) this.mapCreateUserError(retryAttempt.error.message);

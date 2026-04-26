@@ -154,13 +154,14 @@ describe('UsersService', () => {
     expect(createUser).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        user_metadata: expect.objectContaining({ role: 'owner' }),
+        user_metadata: { full_name: 'Mega Man' },
       }),
     );
     expect(createUser).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        user_metadata: { full_name: 'Mega Man' },
+        email: 'mega@1.com',
+        password: 'mega@123!',
       }),
     );
   });
