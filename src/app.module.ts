@@ -22,6 +22,7 @@ import { PartnersModule } from './partners/partners.module';
 import { SettingsModule } from './settings/settings.module';
 import { CompaniesModule }    from './companies/companies.module';
 import { IntegrationsModule } from './integrations/integrations.module';
+import { UserTenantsModule } from './user-tenants/user-tenants.module';
 
 @Module({
   imports: [
@@ -40,11 +41,12 @@ import { IntegrationsModule } from './integrations/integrations.module';
     ]),
 
     // ── Core modules ───────────────────────────
+    AuditModule,
+    SettingsModule,
     DatabaseModule,
     AuthModule,
 
-    // ── Feature modules ─────────────────────────
-    AuditModule,
+    // ── Feature modules ─────────────────────────    
     FarmsModule,
     FieldsModule,
     InputsModule,
@@ -55,8 +57,8 @@ import { IntegrationsModule } from './integrations/integrations.module';
     MenusModule,
     AclModule,
     LicensesModule,
-    PartnersModule,
-    SettingsModule,
+    UserTenantsModule,
+    PartnersModule,   
     CompaniesModule,
     IntegrationsModule,
   ],

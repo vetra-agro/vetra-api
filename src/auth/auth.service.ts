@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, Optional } from "@nestjs/common";
+import { Injectable, UnauthorizedException, ConflictException, Optional, NotFoundException } from "@nestjs/common";
 import { SupabaseProvider } from "../database/supabase.provider";
 import { SignInDto } from "./dto/sign-in.dto";
 import { SignUpDto } from "./dto/sign-up.dto";
@@ -60,21 +60,36 @@ export class AuthService {
     let tenantPlan: string | null = null;
 
     try {
-      const { data: license } = await this.supabase
+      const { data: defaultTenant } = await this.supabase
         .getAdminClient()
-        .from("tenant_license_status")
+        .from("user_available_tenants")
         .select("tenant_id, tenant_name, plan")
-        .in("status", ["active", "trial"])
-        .limit(1)
+        .eq("user_id", data.user.id)
+        .eq("is_default", true)
         .single();
 
-      if (license) {
-        tenantId   = license.tenant_id;
-        tenantName = license.tenant_name;
-        tenantPlan = license.plan;
+      if (defaultTenant) {
+        tenantId   = defaultTenant.tenant_id;
+        tenantName = defaultTenant.tenant_name;
+        tenantPlan = defaultTenant.plan;
+      } else {
+        // Sem default definido — pega o primeiro disponível
+        const { data: firstTenant } = await this.supabase
+          .getAdminClient()
+          .from("user_available_tenants")
+          .select("tenant_id, tenant_name, plan")
+          .eq("user_id", data.user.id)
+          .limit(1)
+          .single();
+
+        if (firstTenant) {
+          tenantId   = firstTenant.tenant_id;
+          tenantName = firstTenant.tenant_name;
+          tenantPlan = firstTenant.plan;
+        }
       }
     } catch {
-      // Nenhum tenant ainda — OK para PoC
+      // Nenhum tenant vinculado — OK para PoC inicial
     }
 
     await this.audit?.log({
@@ -132,18 +147,170 @@ export class AuthService {
     return data.user;
   }
 
-  // ── Tenants disponíveis para o usuário ───────────────────────────────────
-  // No PoC: retorna todos os tenants ativos
-  // Em produção: filtrar por uma tabela user_tenants com FK userId+tenantId
-  async getTenantsForUser(_userId: string) {
+  // ── Tenants disponíveis para o usuário — agora via user_available_tenants
+  async getTenantsForUser(userId: string) {
     const { data, error } = await this.supabase
       .getAdminClient()
-      .from("tenant_license_status")
-      .select("tenant_id, tenant_name, plan, status, modules")
-      .in("status", ["active", "trial"])
+      .from("user_available_tenants")
+      .select("tenant_id, tenant_name, plan, license_status, modules, is_default, role")
+      .eq("user_id", userId)
+      .order("is_default", { ascending: false })
       .order("tenant_name");
 
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return (data ?? []).map((t: any) => ({
+      tenant_id:   t.tenant_id,
+      tenant_name: t.tenant_name,
+      plan:        t.plan,
+      status:      t.license_status,
+      modules:     t.modules,
+      is_default:  t.is_default,
+      role:        t.role,
+    }));
+  }
+
+  async linkUserToTenant(
+    userId: string,
+    tenantId: string,
+    role = "viewer",
+    isDefault = false,
+    performedBy?: string,
+  ) {
+    const { data: profile } = await this.supabase
+      .getAdminClient()
+      .from("profiles")
+      .select("id, email, full_name")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (!profile) throw new NotFoundException("Usuário não encontrado");
+
+    const { data: existing } = await this.supabase
+      .getAdminClient()
+      .from("user_tenants")
+      .select("id, active, role, is_default")
+      .eq("user_id", userId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (existing?.active && existing.role === role && existing.is_default === isDefault) {
+      throw new ConflictException("Usuário já vinculado a este tenant");
+    }
+
+    let result: any;
+    if (existing) {
+      const { data, error } = await this.supabase
+        .getAdminClient()
+        .from("user_tenants")
+        .update({
+          active: true,
+          role,
+          is_default: isDefault,
+          invited_by: performedBy,
+          accepted_at: new Date().toISOString(),
+        })
+        .eq("id", existing.id)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      result = data;
+    } else {
+      const { data, error } = await this.supabase
+        .getAdminClient()
+        .from("user_tenants")
+        .insert({
+          user_id: userId,
+          tenant_id: tenantId,
+          role,
+          is_default: isDefault,
+          invited_by: performedBy,
+          accepted_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      result = data;
+    }
+
+    if (isDefault) {
+      const { error: rpcError } = await this.supabase
+        .getAdminClient()
+        .rpc("set_default_tenant", { p_user_id: userId, p_tenant_id: tenantId });
+      if (rpcError) throw new Error(rpcError.message);
+    }
+
+    await this.audit?.log({
+      userId: performedBy,
+      eventType: "permission_changed",
+      module: "auth",
+      entity: "user_tenant",
+      entityId: result?.id,
+      entityLabel: profile.full_name,
+      description: "Vínculo usuário-tenant criado/atualizado",
+      metadata: { targetUserId: userId, tenantId },
+      oldValues: existing ?? undefined,
+      newValues: { role, isDefault, active: true },
+      success: true,
+    });
+
+    return result;
+  }
+
+  async unlinkUserFromTenant(userId: string, tenantId: string, performedBy?: string) {
+    const { data: existing } = await this.supabase
+      .getAdminClient()
+      .from("user_tenants")
+      .select("id, active, role, is_default")
+      .eq("user_id", userId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    const { error } = await this.supabase
+      .getAdminClient()
+      .from("user_tenants")
+      .update({ active: false, is_default: false })
+      .eq("user_id", userId)
+      .eq("tenant_id", tenantId);
+
+    if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId: performedBy,
+      eventType: "permission_changed",
+      module: "auth",
+      entity: "user_tenant",
+      entityId: existing?.id,
+      description: "Vínculo usuário-tenant desativado",
+      metadata: { targetUserId: userId, tenantId },
+      oldValues: existing ?? undefined,
+      newValues: { active: false, is_default: false },
+      success: true,
+    });
+
+    return { unlinked: true };
+  }
+
+  async setDefaultTenant(userId: string, tenantId: string, performedBy?: string) {
+    const { error } = await this.supabase
+      .getAdminClient()
+      .rpc("set_default_tenant", { p_user_id: userId, p_tenant_id: tenantId });
+
+    if (error) throw new Error(error.message);
+
+    await this.audit?.log({
+      userId: performedBy ?? userId,
+      tenantId,
+      eventType: "permission_changed",
+      module: "auth",
+      entity: "user_tenant",
+      description: "Tenant padrão atualizado",
+      metadata: { targetUserId: userId, tenantId },
+      newValues: { is_default: true },
+      success: true,
+    });
+
+    return { default: tenantId };
   }
 }
