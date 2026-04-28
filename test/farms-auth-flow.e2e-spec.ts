@@ -167,6 +167,39 @@ describeAuthenticatedFlow('Farms Auth Flow (e2e)', () => {
     expect(statsResponse.body.inactive).toBeDefined();
   });
 
+  it('should accept tenantId in update payload without changing farm tenant', async () => {
+    // First, reactivate the farm for this test
+    await request(app.getHttpServer())
+      .patch(`${baseUrl}/farm/farms/${farmId}/status`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId })
+      .send({ status: 'active' });
+
+    // Update with tenantId in payload (matching curl case from bug report)
+    const updateResponse = await request(app.getHttpServer())
+      .put(`${baseUrl}/farm/farms/${farmId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId })
+      .send({
+        tenantId,
+        name: 'Farm with tenantId in payload',
+        notes: 'Test payload includes tenantId',
+      });
+
+    expectSuccessStatus(updateResponse.status);
+    expect(updateResponse.body.id).toBe(farmId);
+    expect(updateResponse.body.name).toBe('Farm with tenantId in payload');
+    expect(updateResponse.body.tenant_id).toBe(tenantId);
+
+    // Verify the tenant_id wasn't changed
+    const detailResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/farm/farms/${farmId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(detailResponse.body.tenant_id).toBe(tenantId);
+  });
+
   afterAll(async () => {
     if (farmId) {
       await request(app.getHttpServer())

@@ -203,7 +203,9 @@ describe('UsersService', () => {
     jest
       .spyOn(service as any, 'waitForProfile')
       .mockResolvedValue({ id: 'orphan-auth-id' });
-    jest.spyOn(service, 'findOne').mockResolvedValue({ id: 'orphan-auth-id' } as any);
+    jest
+      .spyOn(service, 'findOne')
+      .mockResolvedValue({ id: 'orphan-auth-id' } as any);
 
     await expect(
       service.create({

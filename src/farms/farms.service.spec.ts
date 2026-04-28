@@ -1,6 +1,6 @@
-import { FarmsService } from "./farms.service";
+import { FarmsService } from './farms.service';
 
-describe("FarmsService", () => {
+describe('FarmsService', () => {
   const getService = (adminClient: any) => {
     const supabaseProvider = {
       getAdminClient: jest.fn().mockReturnValue(adminClient),
@@ -9,9 +9,9 @@ describe("FarmsService", () => {
     return new FarmsService(supabaseProvider);
   };
 
-  it("should ignore tenantId from update payload", async () => {
+  it('should ignore tenantId from update payload', async () => {
     const single = jest.fn().mockResolvedValue({
-      data: { id: "farm-1", tenant_id: "tenant-a" },
+      data: { id: 'farm-1', tenant_id: 'tenant-a' },
       error: null,
     });
     const query = { eq: jest.fn(), single };
@@ -20,7 +20,7 @@ describe("FarmsService", () => {
     const select = jest.fn().mockReturnValue({ eq });
 
     const updateSingle = jest.fn().mockResolvedValue({
-      data: { id: "farm-1", name: "Updated Farm" },
+      data: { id: 'farm-1', name: 'Updated Farm' },
       error: null,
     });
     const updateSelect = jest.fn().mockReturnValue({ single: updateSingle });
@@ -37,15 +37,15 @@ describe("FarmsService", () => {
     const service = getService(adminClient);
 
     await service.update(
-      "farm-1",
+      'farm-1',
       {
-        tenantId: "tenant-b",
-        name: "Updated Farm",
+        tenantId: 'tenant-b',
+        name: 'Updated Farm',
       },
-      "tenant-a"
+      'tenant-a',
     );
 
-    expect(update).toHaveBeenCalledWith({ name: "Updated Farm" });
-    expect(updateEq).toHaveBeenCalledWith("id", "farm-1");
+    expect(update).toHaveBeenCalledWith({ name: 'Updated Farm' });
+    expect(updateEq).toHaveBeenCalledWith('id', 'farm-1');
   });
 });

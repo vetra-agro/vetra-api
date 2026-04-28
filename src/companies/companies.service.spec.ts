@@ -133,7 +133,9 @@ describe('CompaniesService', () => {
       from: jest.fn().mockReturnValue({
         select: jest.fn().mockReturnValue({
           eq: jest.fn().mockReturnValue({
-            single: jest.fn().mockResolvedValue({ data: null, error: { message: 'nf' } }),
+            single: jest
+              .fn()
+              .mockResolvedValue({ data: null, error: { message: 'nf' } }),
           }),
         }),
       }),
@@ -141,7 +143,9 @@ describe('CompaniesService', () => {
 
     const service = getService(adminClient);
 
-    await expect(service.findOne('missing')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.findOne('missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('should update company data', async () => {
@@ -186,11 +190,17 @@ describe('CompaniesService', () => {
         })
         .mockReturnValueOnce({
           select: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: [{ active: true }, { active: true }], count: 2 }),
+            eq: jest.fn().mockResolvedValue({
+              data: [{ active: true }, { active: true }],
+              count: 2,
+            }),
           }),
         })
         .mockReturnValueOnce({
-          select: jest.fn().mockResolvedValue({ data: [{ id: 'f1' }, { id: 'f2' }], error: null }),
+          select: jest.fn().mockResolvedValue({
+            data: [{ id: 'f1' }, { id: 'f2' }],
+            error: null,
+          }),
         }),
     };
 

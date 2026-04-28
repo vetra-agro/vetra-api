@@ -8,7 +8,9 @@ const e2eUserPassword = process.env.E2E_USER_PASSWORD;
 
 const runAuthenticatedFlow = Boolean(e2eUserEmail) && Boolean(e2eUserPassword);
 
-const describeAuthenticatedFlow = runAuthenticatedFlow ? describe : describe.skip;
+const describeAuthenticatedFlow = runAuthenticatedFlow
+  ? describe
+  : describe.skip;
 
 function expectSuccessStatus(status: number) {
   expect([200, 201]).toContain(status);
@@ -72,7 +74,9 @@ describeAuthenticatedFlow('Companies Auth Flow (e2e)', () => {
     expect(listResponse.status).toBe(200);
     expect(Array.isArray(listResponse.body)).toBe(true);
 
-    const firstCompany = (listResponse.body as Array<{ tenant_id?: string }>)[0];
+    const firstCompany = (
+      listResponse.body as Array<{ tenant_id?: string }>
+    )[0];
     if (!firstCompany?.tenant_id) return;
 
     const detailResponse = await request(app.getHttpServer())

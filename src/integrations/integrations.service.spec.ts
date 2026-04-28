@@ -37,8 +37,20 @@ describe('IntegrationsService', () => {
 
   it('should mark integration as configured when all required fields are set', async () => {
     const settings = [
-      { tenant_id: 'tenant-1', key: 'int_maps_provider', value: 'maptiler', default_value: null, options: null },
-      { tenant_id: 'tenant-1', key: 'int_maps_key', value: 'abc123', default_value: null, options: null },
+      {
+        tenant_id: 'tenant-1',
+        key: 'int_maps_provider',
+        value: 'maptiler',
+        default_value: null,
+        options: null,
+      },
+      {
+        tenant_id: 'tenant-1',
+        key: 'int_maps_key',
+        value: 'abc123',
+        default_value: null,
+        options: null,
+      },
     ];
 
     const service = getService(buildSettingsClient(settings));
@@ -52,8 +64,20 @@ describe('IntegrationsService', () => {
 
   it('should give tenant setting priority over default', async () => {
     const settings = [
-      { tenant_id: null, key: 'int_weather_key', value: 'default-key', default_value: null, options: null },
-      { tenant_id: 'tenant-1', key: 'int_weather_key', value: 'tenant-key', default_value: null, options: null },
+      {
+        tenant_id: null,
+        key: 'int_weather_key',
+        value: 'default-key',
+        default_value: null,
+        options: null,
+      },
+      {
+        tenant_id: 'tenant-1',
+        key: 'int_weather_key',
+        value: 'tenant-key',
+        default_value: null,
+        options: null,
+      },
     ];
 
     const service = getService(buildSettingsClient(settings));
@@ -66,7 +90,13 @@ describe('IntegrationsService', () => {
 
   it('should fall back to default_value when tenant value is absent', async () => {
     const settings = [
-      { tenant_id: null, key: 'int_weather_key', value: null, default_value: 'fallback-key', options: null },
+      {
+        tenant_id: null,
+        key: 'int_weather_key',
+        value: null,
+        default_value: 'fallback-key',
+        options: null,
+      },
     ];
 
     const service = getService(buildSettingsClient(settings));
@@ -155,14 +185,20 @@ describe('IntegrationsService', () => {
     const service = getService(buildSettingsClient([]));
     const result = await service.testIntegration('tenant-1', 'unknown');
 
-    expect(result).toEqual({ success: false, message: 'Integração não encontrada' });
+    expect(result).toEqual({
+      success: false,
+      message: 'Integração não encontrada',
+    });
   });
 
   it('should return unconfigured when required fields are missing', async () => {
     const service = getService(buildSettingsClient([]));
     const result = await service.testIntegration('tenant-1', 'weather');
 
-    expect(result).toEqual({ success: false, message: 'Integração não configurada' });
+    expect(result).toEqual({
+      success: false,
+      message: 'Integração não configurada',
+    });
   });
 
   it('should return saved message for integrations without live test (storage)', async () => {
