@@ -23,6 +23,7 @@ import { SettingsModule } from './settings/settings.module';
 import { CompaniesModule }    from './companies/companies.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { UserTenantsModule } from './user-tenants/user-tenants.module';
+import { SeasonsModule } from './seasons/seasons.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { UserTenantsModule } from './user-tenants/user-tenants.module';
     PartnersModule,   
     CompaniesModule,
     IntegrationsModule,
+    SeasonsModule,
   ],
   controllers: [AppController],
   providers: [
