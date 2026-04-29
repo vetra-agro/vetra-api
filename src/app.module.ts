@@ -24,6 +24,7 @@ import { CompaniesModule }    from './companies/companies.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { UserTenantsModule } from './user-tenants/user-tenants.module';
 import { SeasonsModule } from './seasons/seasons.module';
+import { MachineryModule } from './machinery/machinery.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { SeasonsModule } from './seasons/seasons.module';
     CompaniesModule,
     IntegrationsModule,
     SeasonsModule,
+    MachineryModule,
   ],
   controllers: [AppController],
   providers: [
