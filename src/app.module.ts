@@ -25,6 +25,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { UserTenantsModule } from './user-tenants/user-tenants.module';
 import { SeasonsModule } from './seasons/seasons.module';
 import { MachineryModule } from './machinery/machinery.module';
+import { ActivitiesModule } from './activities/activities.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { MachineryModule } from './machinery/machinery.module';
     IntegrationsModule,
     SeasonsModule,
     MachineryModule,
+    ActivitiesModule,
   ],
   controllers: [AppController],
   providers: [
