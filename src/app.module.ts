@@ -29,6 +29,7 @@ import { ActivitiesModule } from './activities/activities.module';
 import { WeatherModule } from './weather/weather.module';
 import { FieldNotesModule } from './field-notes/field-notes.module';
 import { PhytoModule } from './phytosanitary/phyto.module';
+import { FuelModule } from './fuel/fuel.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { PhytoModule } from './phytosanitary/phyto.module';
     WeatherModule,
     FieldNotesModule,
     PhytoModule,
+    FuelModule,
   ],
   controllers: [AppController],
   providers: [
