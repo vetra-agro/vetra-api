@@ -20,11 +20,75 @@ export class FuelService {
 
   async createTank(dto: CreateFuelTankDto) {
     const { data, error } = await this.db.from("fuel_tanks").insert({
-      tenant_id:    dto.tenantId, farm_id:     dto.farmId,
-      name:         dto.name,     fuel_type:   dto.fuelType,
-      capacity_l:   dto.capacityL, min_level_l: dto.minLevelL,
-      location_desc:dto.locationDesc,
+      tenant_id: dto.tenantId, farm_id: dto.farmId,
+      name: dto.name, fuel_type: dto.fuelType,
+      capacity_l: dto.capacityL, min_level_l: dto.minLevelL,
+      location_desc: dto.locationDesc,
     }).select().single();
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  // ── Maquinário disponível para abastecimento ──────────────────────────────
+  async getMachineryForFarm(farmId: string, tenantId?: string) {
+    let q = this.db
+      .from("machinery")
+      .select("id, name, fleet_number, type, brand, model, fuel_type, hourmeter_current, odometer_current_km, status")
+      .eq("farm_id", farmId)
+      .in("status", ["active", "idle"])
+      .order("name");
+    if (tenantId) q = q.eq("tenant_id", tenantId);
+    const { data, error } = await q;
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  // ── Veículos de terceiros ──────────────────────────────────────────────────
+  async getThirdPartyVehicles(farmId: string, tenantId?: string) {
+    let q = this.db
+      .from("third_party_vehicles")
+      .select("*")
+      .eq("farm_id", farmId)
+      .eq("active", true)
+      .order("name");
+    if (tenantId) q = q.eq("tenant_id", tenantId);
+    const { data, error } = await q;
+    if (error) throw new BadRequestException(error.message);
+    return data ?? [];
+  }
+
+  async createThirdPartyVehicle(dto: {
+    tenantId: string; farmId: string; name: string;
+    licensePlate?: string; ownerName?: string; ownerDoc?: string;
+    fuelType?: string; notes?: string;
+  }) {
+    const { data, error } = await this.db
+      .from("third_party_vehicles")
+      .insert({
+        tenant_id:    dto.tenantId,
+        farm_id:      dto.farmId,
+        name:         dto.name,
+        license_plate:dto.licensePlate,
+        owner_name:   dto.ownerName,
+        owner_doc:    dto.ownerDoc,
+        fuel_type:    dto.fuelType ?? "diesel",
+        notes:        dto.notes,
+      })
+      .select().single();
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async updateThirdPartyVehicle(id: string, dto: { name?: string; licensePlate?: string; ownerName?: string; active?: boolean }) {
+    const { data, error } = await this.db
+      .from("third_party_vehicles")
+      .update({
+        ...(dto.name         && { name:          dto.name }),
+        ...(dto.licensePlate && { license_plate: dto.licensePlate }),
+        ...(dto.ownerName    && { owner_name:    dto.ownerName }),
+        ...(dto.active !== undefined && { active: dto.active }),
+      })
+      .eq("id", id).select().single();
     if (error) throw new BadRequestException(error.message);
     return data;
   }
@@ -32,7 +96,7 @@ export class FuelService {
   // ── Abastecimentos ────────────────────────────────────────────────────────
   async findAll(filters: {
     tenantId?: string; farmId?: string; machineryId?: string;
-    fuelType?: string; seasonId?: string;
+    fuelType?: string; seasonId?: string; isThirdParty?: boolean;
     dateFrom?: string; dateTo?: string; page?: number; limit?: number;
   }) {
     const page  = filters.page  ?? 1;
@@ -45,13 +109,14 @@ export class FuelService {
       .order("supplied_at", { ascending: false })
       .range(from, from + limit - 1);
 
-    if (filters.tenantId)   q = q.eq("tenant_id",   filters.tenantId);
-    if (filters.farmId)     q = q.eq("farm_id",      filters.farmId);
-    if (filters.machineryId)q = q.eq("machinery_id", filters.machineryId);
-    if (filters.fuelType)   q = q.eq("fuel_type",    filters.fuelType);
-    if (filters.seasonId)   q = q.eq("season_id",    filters.seasonId);
-    if (filters.dateFrom)   q = q.gte("supplied_at", filters.dateFrom);
-    if (filters.dateTo)     q = q.lte("supplied_at", filters.dateTo + "T23:59:59");
+    if (filters.tenantId)    q = q.eq("tenant_id",      filters.tenantId);
+    if (filters.farmId)      q = q.eq("farm_id",         filters.farmId);
+    if (filters.machineryId) q = q.eq("machinery_id",   filters.machineryId);
+    if (filters.fuelType)    q = q.eq("fuel_type",       filters.fuelType);
+    if (filters.seasonId)    q = q.eq("season_id",       filters.seasonId);
+    if (filters.isThirdParty !== undefined) q = q.eq("is_third_party", filters.isThirdParty);
+    if (filters.dateFrom)    q = q.gte("supplied_at",    filters.dateFrom);
+    if (filters.dateTo)      q = q.lte("supplied_at",    filters.dateTo + "T23:59:59");
 
     const { data, count, error } = await q;
     if (error) throw new BadRequestException(error.message);
@@ -70,39 +135,44 @@ export class FuelService {
   }
 
   async create(dto: CreateFuelSupplyDto, userId?: string) {
+    const isThirdParty = !!dto.thirdPartyVehicleId && !dto.machineryId;
+
     const { data, error } = await this.db
       .from("fuel_supplies")
       .insert({
-        tenant_id:     dto.tenantId,
-        farm_id:       dto.farmId,
-        tank_id:       dto.tankId,
-        machinery_id:  dto.machineryId,
-        season_id:     dto.seasonId,
-        fuel_type:     dto.fuelType     ?? "diesel",
-        source:        dto.source       ?? "farm_tank",
-        supplied_at:   dto.suppliedAt   ?? new Date().toISOString(),
-        quantity_l:    dto.quantityL,
-        price_per_l:   dto.pricePerL,
-        total_cost:    dto.totalCost,
-        hourmeter:     dto.hourmeter,
-        odometer_km:   dto.odometerKm,
-        operator_id:   dto.operatorId,
-        operator_name: dto.operatorName,
-        supplier_name: dto.supplierName,
-        invoice_number:dto.invoiceNumber,
-        batch_number:  dto.batchNumber,
-        notes:         dto.notes,
-        tags:          dto.tags ?? [],
-        created_by:    userId,
+        tenant_id:              dto.tenantId,
+        farm_id:                dto.farmId,
+        tank_id:                dto.tankId,
+        machinery_id:           dto.machineryId,
+        third_party_vehicle_id: dto.thirdPartyVehicleId,
+        is_third_party:         isThirdParty,
+        season_id:              dto.seasonId,
+        fuel_type:              dto.fuelType    ?? "diesel",
+        source:                 dto.source      ?? "farm_tank",
+        supplied_at:            dto.suppliedAt  ?? new Date().toISOString(),
+        quantity_l:             dto.quantityL,
+        price_per_l:            dto.pricePerL,
+        total_cost:             dto.totalCost,
+        hourmeter:              dto.hourmeter,
+        odometer_km:            dto.odometerKm,
+        operator_id:            dto.operatorId,
+        operator_name:          dto.operatorName,
+        supplier_name:          dto.supplierName,
+        invoice_number:         dto.invoiceNumber,
+        batch_number:           dto.batchNumber,
+        notes:                  dto.notes,
+        tags:                   dto.tags ?? [],
+        created_by:             userId,
       })
       .select().single();
     if (error) throw new BadRequestException(error.message);
 
-    // Atualiza horímetro da máquina automaticamente
-    if (dto.machineryId && dto.hourmeter) {
-      await this.db.from("machinery")
-        .update({ hourmeter_current: dto.hourmeter, ...(dto.odometerKm ? { odometer_current_km: dto.odometerKm } : {}) })
-        .eq("id", dto.machineryId);
+    // Atualiza horímetro/odômetro da máquina automaticamente
+    if (dto.machineryId && (dto.hourmeter || dto.odometerKm)) {
+      const updates: Record<string, any> = {};
+      if (dto.hourmeter)   updates.hourmeter_current    = dto.hourmeter;
+      if (dto.odometerKm)  updates.odometer_current_km  = dto.odometerKm;
+      await this.db.from("machinery").update(updates).eq("id", dto.machineryId);
     }
 
     return data;
@@ -119,6 +189,7 @@ export class FuelService {
       supplierName:"supplier_name", invoiceNumber:"invoice_number",
       batchNumber:"batch_number", notes:"notes", tags:"tags",
       tankId:"tank_id", machineryId:"machinery_id", seasonId:"season_id",
+      thirdPartyVehicleId:"third_party_vehicle_id", isThirdParty:"is_third_party",
     };
     for (const [k, col] of Object.entries(map)) {
       if ((dto as any)[k] !== undefined) updates[col] = (dto as any)[k];
@@ -139,7 +210,7 @@ export class FuelService {
   async getStats(farmId: string, tenantId?: string, dateFrom?: string, dateTo?: string) {
     let q = this.db
       .from("fuel_supplies")
-      .select("fuel_type, quantity_l, total_cost, consumption_l_h, supplied_at")
+      .select("fuel_type, quantity_l, total_cost, consumption_l_h, is_third_party, supplied_at")
       .eq("farm_id", farmId);
     if (tenantId) q = q.eq("tenant_id", tenantId);
     if (dateFrom) q = q.gte("supplied_at", dateFrom);
@@ -151,17 +222,19 @@ export class FuelService {
     const lowTanks = tanks.filter((t: any) => t.min_level_l && t.current_l <= t.min_level_l);
 
     return {
-      total_records:  all.length,
-      total_quantity_l: all.reduce((s: number, r: any) => s + (+r.quantity_l || 0), 0),
-      total_cost:       all.reduce((s: number, r: any) => s + (+r.total_cost  || 0), 0),
+      total_records:      all.length,
+      own_fleet:          all.filter((r: any) => !r.is_third_party).length,
+      third_party:        all.filter((r: any) =>  r.is_third_party).length,
+      total_quantity_l:   all.reduce((s: number, r: any) => s + (+r.quantity_l || 0), 0),
+      total_cost:         all.reduce((s: number, r: any) => s + (+r.total_cost  || 0), 0),
       avg_consumption_l_h: (() => {
-        const with_h = all.filter((r: any) => r.consumption_l_h);
-        if (!with_h.length) return null;
-        return with_h.reduce((s: number, r: any) => s + +r.consumption_l_h, 0) / with_h.length;
+        const w = all.filter((r: any) => r.consumption_l_h);
+        if (!w.length) return null;
+        return w.reduce((s: number, r: any) => s + +r.consumption_l_h, 0) / w.length;
       })(),
-      by_fuel_type:   this.group(all, "fuel_type"),
+      by_fuel_type: this.group(all, "fuel_type"),
       tanks,
-      low_tanks:      lowTanks.length,
+      low_tanks: lowTanks.length,
     };
   }
 

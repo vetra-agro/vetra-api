@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Put, Delete,
+  Controller, Get, Post, Put, Delete, Patch,
   Param, Body, Query, UseGuards, Req,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
@@ -28,6 +28,7 @@ export class FuelController {
     @Query("dateTo")   dateTo?:   string,
   ) { return this.fuelService.getStats(farmId, tenantId, dateFrom, dateTo); }
 
+  // ── Tanques ───────────────────────────────────────────────────────────────
   @Get("tanks/:farmId")
   @ApiQuery({ name: "tenantId", required: false })
   getTanks(@Param("farmId") farmId: string, @Query("tenantId") tenantId?: string) {
@@ -39,28 +40,58 @@ export class FuelController {
     return this.fuelService.createTank(dto);
   }
 
+  // ── Maquinário da fazenda ─────────────────────────────────────────────────
+  @Get("machinery/:farmId")
+  @ApiOperation({ summary: "Listar maquinário ativo da fazenda para abastecimento" })
+  @ApiQuery({ name: "tenantId", required: false })
+  getMachinery(@Param("farmId") farmId: string, @Query("tenantId") tenantId?: string) {
+    return this.fuelService.getMachineryForFarm(farmId, tenantId);
+  }
+
+  // ── Veículos de terceiros ─────────────────────────────────────────────────
+  @Get("third-party/:farmId")
+  @ApiOperation({ summary: "Listar veículos de terceiros da fazenda" })
+  @ApiQuery({ name: "tenantId", required: false })
+  getThirdParty(@Param("farmId") farmId: string, @Query("tenantId") tenantId?: string) {
+    return this.fuelService.getThirdPartyVehicles(farmId, tenantId);
+  }
+
+  @Post("third-party")
+  @ApiOperation({ summary: "Cadastrar veículo de terceiro" })
+  createThirdParty(@Body() dto: any) {
+    return this.fuelService.createThirdPartyVehicle(dto);
+  }
+
+  @Patch("third-party/:id")
+  @ApiOperation({ summary: "Atualizar veículo de terceiro" })
+  updateThirdParty(@Param("id") id: string, @Body() dto: any) {
+    return this.fuelService.updateThirdPartyVehicle(id, dto);
+  }
+
+  // ── Abastecimentos ────────────────────────────────────────────────────────
   @Get()
-  @ApiQuery({ name: "tenantId",    required: false })
-  @ApiQuery({ name: "farmId",      required: false })
-  @ApiQuery({ name: "machineryId", required: false })
-  @ApiQuery({ name: "fuelType",    required: false })
-  @ApiQuery({ name: "seasonId",    required: false })
-  @ApiQuery({ name: "dateFrom",    required: false })
-  @ApiQuery({ name: "dateTo",      required: false })
-  @ApiQuery({ name: "page",        required: false })
+  @ApiQuery({ name: "tenantId",      required: false })
+  @ApiQuery({ name: "farmId",        required: false })
+  @ApiQuery({ name: "machineryId",   required: false })
+  @ApiQuery({ name: "fuelType",      required: false })
+  @ApiQuery({ name: "isThirdParty",  required: false })
+  @ApiQuery({ name: "dateFrom",      required: false })
+  @ApiQuery({ name: "dateTo",        required: false })
+  @ApiQuery({ name: "page",          required: false })
   findAll(
-    @Query("tenantId")    tenantId?:    string,
-    @Query("farmId")      farmId?:      string,
-    @Query("machineryId") machineryId?: string,
-    @Query("fuelType")    fuelType?:    string,
-    @Query("seasonId")    seasonId?:    string,
-    @Query("dateFrom")    dateFrom?:    string,
-    @Query("dateTo")      dateTo?:      string,
-    @Query("page")        page?:        string,
+    @Query("tenantId")     tenantId?:    string,
+    @Query("farmId")       farmId?:      string,
+    @Query("machineryId")  machineryId?: string,
+    @Query("fuelType")     fuelType?:    string,
+    @Query("isThirdParty") isThirdParty?:string,
+    @Query("dateFrom")     dateFrom?:    string,
+    @Query("dateTo")       dateTo?:      string,
+    @Query("page")         page?:        string,
   ) {
     return this.fuelService.findAll({
-      tenantId, farmId, machineryId, fuelType, seasonId, dateFrom, dateTo,
-      page: page ? Number(page) : 1,
+      tenantId, farmId, machineryId, fuelType,
+      isThirdParty: isThirdParty !== undefined ? isThirdParty === "true" : undefined,
+      dateFrom, dateTo, page: page ? Number(page) : 1,
     });
   }
 
