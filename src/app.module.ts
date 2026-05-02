@@ -27,6 +27,7 @@ import { SeasonsModule } from './seasons/seasons.module';
 import { MachineryModule } from './machinery/machinery.module';
 import { ActivitiesModule } from './activities/activities.module';
 import { WeatherModule } from './weather/weather.module';
+import { FieldNotesModule } from './field-notes/field-notes.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { WeatherModule } from './weather/weather.module';
     MachineryModule,
     ActivitiesModule,
     WeatherModule,
+    FieldNotesModule,
   ],
   controllers: [AppController],
   providers: [
