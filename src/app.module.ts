@@ -26,6 +26,7 @@ import { UserTenantsModule } from './user-tenants/user-tenants.module';
 import { SeasonsModule } from './seasons/seasons.module';
 import { MachineryModule } from './machinery/machinery.module';
 import { ActivitiesModule } from './activities/activities.module';
+import { WeatherModule } from './weather/weather.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { ActivitiesModule } from './activities/activities.module';
     SeasonsModule,
     MachineryModule,
     ActivitiesModule,
+    WeatherModule,
   ],
   controllers: [AppController],
   providers: [
