@@ -9,18 +9,37 @@ export class UserTenantsService {
 
   // ── Listar usuários de um tenant ─────────────────────────────────────────
   async getUsersByTenant(tenantId: string) {
-    const { data, error } = await this.db
+    // 1. Busca vínculos sem filtro active e sem !inner
+    const { data: links, error: linksError } = await this.db
       .from("user_tenants")
-      .select(`
-        id, user_id, role, is_default, active,
-        invited_at, accepted_at,
-        profiles!inner(full_name, email, avatar_url)
-      `)
+      .select("id, user_id, tenant_id, role, is_default, active, invited_at, accepted_at, created_at")
       .eq("tenant_id", tenantId)
-      .order("invited_at", { ascending: false });
+      .order("created_at", { ascending: false });
 
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    if (linksError) throw new Error(linksError.message);
+    if (!links || links.length === 0) return [];
+
+    // 2. Busca perfis separadamente — evita !inner que quebra se FK não existe
+    const userIds = links.map((l: any) => l.user_id).filter(Boolean);
+
+    const { data: profiles } = await this.db
+      .from("profiles")
+      .select("id, full_name, email, avatar_url, role")
+      .in("id", userIds);
+
+    // 3. Mescla em JS — seguro independente do estado do banco
+    const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+
+    return links.map((link: any) => ({
+      ...link,
+      profile: profileMap.get(link.user_id) ?? {
+        id:         link.user_id,
+        full_name:  "Usuário sem perfil",
+        email:      null,
+        avatar_url: null,
+        role:       link.role,
+      },
+    }));
   }
 
   // ── Listar tenants de um usuário ─────────────────────────────────────────
@@ -35,42 +54,67 @@ export class UserTenantsService {
     return data ?? [];
   }
 
+  // ── Buscar usuários disponíveis para vincular ─────────────────────────────
+  async getAvailableUsers(tenantId: string) {
+    // 1. IDs já vinculados ao tenant
+    const { data: linked } = await this.db
+      .from("user_tenants")
+      .select("user_id")
+      .eq("tenant_id", tenantId);
+
+    const linkedIds = (linked ?? [])
+      .map((l: any) => l.user_id as string)
+      .filter(Boolean);
+
+    // 2. Todos os perfis sem filtro active
+    const { data: allProfiles, error } = await this.db
+      .from("profiles")
+      .select("id, full_name, email, role")
+      .order("full_name");
+
+    if (error) throw new Error(error.message);
+
+    // 3. Filtra em JS
+    return (allProfiles ?? []).filter(
+      (p: any) => !linkedIds.includes(p.id)
+    );
+  }
+
   // ── Vincular usuário a um tenant ─────────────────────────────────────────
   async linkUser(dto: {
-    tenantId: string;
-    userId:   string;
-    role:     string;
-    isDefault?:boolean;
-    invitedBy?:string;
+    tenantId:   string;
+    userId:     string;
+    role:       string;
+    isDefault?: boolean;
+    invitedBy?: string;
   }) {
-    // Verifica se o usuário existe
     const { data: profile } = await this.db
       .from("profiles")
       .select("id, email, full_name")
       .eq("id", dto.userId)
-      .single();
+      .maybeSingle();
 
     if (!profile) throw new NotFoundException("Usuário não encontrado");
 
-    // Verifica se já está vinculado
     const { data: existing } = await this.db
       .from("user_tenants")
       .select("id, active")
-      .eq("user_id", dto.userId)
+      .eq("user_id",   dto.userId)
       .eq("tenant_id", dto.tenantId)
       .maybeSingle();
 
     if (existing) {
-      if (existing.active) throw new ConflictException("Usuário já vinculado a este tenant");
-      // Reativar vínculo desativado
-      await this.db
+      if (existing.active === true) {
+        throw new ConflictException("Usuário já está vinculado a este tenant");
+      }
+      const { error } = await this.db
         .from("user_tenants")
         .update({ active: true, role: dto.role, accepted_at: new Date().toISOString() })
         .eq("id", existing.id);
+      if (error) throw new Error(error.message);
       return { reactivated: true, userId: dto.userId };
     }
 
-    // Novo vínculo
     const { data, error } = await this.db
       .from("user_tenants")
       .insert({
@@ -78,15 +122,15 @@ export class UserTenantsService {
         tenant_id:   dto.tenantId,
         role:        dto.role ?? "viewer",
         is_default:  dto.isDefault ?? false,
-        invited_by:  dto.invitedBy,
-        accepted_at: new Date().toISOString(), // auto-aceita no PoC
+        active:      true,
+        invited_by:  dto.invitedBy ?? null,
+        accepted_at: new Date().toISOString(),
       })
       .select()
       .single();
 
     if (error) throw new Error(error.message);
 
-    // Se is_default, remove default dos outros
     if (dto.isDefault) {
       await this.db.rpc("set_default_tenant", {
         p_user_id:   dto.userId,
@@ -97,78 +141,47 @@ export class UserTenantsService {
     return data;
   }
 
-  // ── Desvincular usuário de um tenant ─────────────────────────────────────
+  // ── Desvincular usuário ───────────────────────────────────────────────────
   async unlinkUser(tenantId: string, userId: string) {
     const { error } = await this.db
       .from("user_tenants")
       .update({ active: false })
       .eq("tenant_id", tenantId)
-      .eq("user_id", userId);
-
+      .eq("user_id",   userId);
     if (error) throw new Error(error.message);
     return { unlinked: true };
   }
 
-  // ── Atualizar role do usuário num tenant ─────────────────────────────────
+  // ── Atualizar role ────────────────────────────────────────────────────────
   async updateRole(tenantId: string, userId: string, role: string) {
     const { error } = await this.db
       .from("user_tenants")
       .update({ role })
       .eq("tenant_id", tenantId)
-      .eq("user_id", userId);
-
+      .eq("user_id",   userId);
     if (error) throw new Error(error.message);
     return { updated: true };
   }
 
-  // ── Definir tenant padrão do usuário ─────────────────────────────────────
+  // ── Definir tenant padrão ─────────────────────────────────────────────────
   async setDefault(userId: string, tenantId: string) {
-    await this.db.rpc("set_default_tenant", {
+    const { error } = await this.db.rpc("set_default_tenant", {
       p_user_id: userId, p_tenant_id: tenantId,
     });
+    if (error) throw new Error(error.message);
     return { default: tenantId };
   }
 
-  // ── Buscar todos os usuários disponíveis para vincular ───────────────────
-  async getAvailableUsers(tenantId: string) {
-    // Retorna usuários que NÃO estão vinculados a este tenant
-    const { data: linked } = await this.db
-      .from("user_tenants")
-      .select("user_id")
-      .eq("tenant_id", tenantId)
-      .eq("active", true);
-
-    const linkedIds = (linked ?? []).map((l: any) => l.user_id);
-
-    let query = this.db
-      .from("profiles")
-      .select("id, full_name, email, role")
-      .eq("active", true)
-      .order("full_name");
-
-    if (linkedIds.length > 0) {
-      query = query.not("id", "in", `(${linkedIds.join(",")})`);
-    }
-
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return data ?? [];
-  }
-
-  // ── Seed: vincular todos os usuários existentes a um tenant ──────────────
+  // ── Seed ──────────────────────────────────────────────────────────────────
   async seedLinkAllToTenant(tenantId: string, invitedBy?: string) {
     const { data: profiles } = await this.db
-      .from("profiles")
-      .select("id, role")
-      .eq("active", true);
+      .from("profiles").select("id, role");
 
     const rows = (profiles ?? []).map((p: any) => ({
-      user_id:     p.id,
-      tenant_id:   tenantId,
-      role:        p.role,
-      is_default:  true,
-      accepted_at: new Date().toISOString(),
-      invited_by:  invitedBy,
+      user_id: p.id, tenant_id: tenantId,
+      role: p.role ?? "viewer", is_default: true,
+      active: true, accepted_at: new Date().toISOString(),
+      invited_by: invitedBy ?? null,
     }));
 
     if (rows.length === 0) return { linked: 0 };
