@@ -1,4 +1,6 @@
 import { Module } from "@nestjs/common";
+import { FinancialController } from './financial.controller';
+import { FinancialService } from './financial.service';
 import { BanksController }      from "./banks/banks.controller";
 import { BanksService }         from "./banks/banks.service";
 import { PayableController }    from "./payable/payable.controller";
@@ -9,8 +11,8 @@ import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports:     [AuthModule],
-  controllers: [BanksController, PayableController, ReceivableController],
-  providers:   [BanksService,    PayableService,    ReceivableService],
-  exports:     [BanksService,    PayableService,    ReceivableService],
+  controllers: [FinancialController, BanksController, PayableController, ReceivableController],
+  providers:   [FinancialService, BanksService,    PayableService,    ReceivableService],
+  exports:     [FinancialService, BanksService,    PayableService,    ReceivableService],
 })
 export class FinancialModule {}
