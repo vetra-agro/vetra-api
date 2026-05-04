@@ -32,6 +32,7 @@ import { PhytoModule } from './phytosanitary/phyto.module';
 import { FuelModule } from './fuel/fuel.module';
 import { HistoryModule } from './history/history.module';
 import { CashFlowModule } from './cashflow/cashflow.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { CashFlowModule } from './cashflow/cashflow.module';
     FuelModule,
     HistoryModule,
     CashFlowModule,
+    ReconciliationModule,
   ],
   controllers: [AppController],
   providers: [
