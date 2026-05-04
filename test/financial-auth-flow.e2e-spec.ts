@@ -21,6 +21,9 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
   let accessToken: string;
   let tenantId: string;
   let farmId: string;
+  let bankAccountId: string;
+  let payableId: string;
+  let receivableId: string;
 
   const baseUrl = '/api/v1';
   const uniqueSuffix = Date.now().toString();
@@ -141,5 +144,189 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`);
 
     expect(summaryResponse.status).toBe(200);
+  });
+
+  it('should create, list and update a bank account', async () => {
+    const bankListResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/banks/list`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(bankListResponse.status).toBe(200);
+    expect(Array.isArray(bankListResponse.body)).toBe(true);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/financial/banks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        tenantId,
+        farmId,
+        name: `Conta E2E ${uniqueSuffix}`,
+        bankName: 'Banco do Brasil',
+        bankCode: '001',
+        agency: '1234',
+        accountNumber: `56789-${uniqueSuffix.slice(-1)}`,
+        accountType: 'checking',
+        currentBalance: 5000,
+        initialBalance: 5000,
+        isDefault: true,
+      });
+
+    expectSuccessStatus(createResponse.status);
+    expect(createResponse.body.id).toBeDefined();
+    bankAccountId = createResponse.body.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/banks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.body)).toBe(true);
+    expect(
+      (listResponse.body as Array<{ id?: string }>).some(
+        (account) => account.id === bankAccountId,
+      ),
+    ).toBe(true);
+
+    const statsResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/banks/stats`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(statsResponse.status).toBe(200);
+    expect(statsResponse.body.total_accounts).toBeDefined();
+
+    const updateResponse = await request(app.getHttpServer())
+      .put(`${baseUrl}/financial/banks/${bankAccountId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId })
+      .send({ notes: 'Atualizada via e2e' });
+
+    expectSuccessStatus(updateResponse.status);
+    expect(updateResponse.body.id).toBe(bankAccountId);
+  });
+
+  it('should create, list, pay and remove a payable account', async () => {
+    const categoriesResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/payable/categories`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(categoriesResponse.status).toBe(200);
+    expect(Array.isArray(categoriesResponse.body)).toBe(true);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/financial/payable`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        tenantId,
+        farmId,
+        bankAccountId,
+        description: `Conta a pagar E2E ${uniqueSuffix}`,
+        amount: 1200,
+        dueDate: '2025-07-10',
+      });
+
+    expectSuccessStatus(createResponse.status);
+    expect(createResponse.body.id).toBeDefined();
+    payableId = createResponse.body.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/payable`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.body.data)).toBe(true);
+
+    const statsResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/payable/stats`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(statsResponse.status).toBe(200);
+    expect(statsResponse.body.total).toBeDefined();
+
+    const payResponse = await request(app.getHttpServer())
+      .patch(`${baseUrl}/financial/payable/${payableId}/pay`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId })
+      .send({
+        amountPaid: 1200,
+        paymentDate: '2025-07-10',
+        paymentMethod: 'pix',
+        bankAccountId,
+      });
+
+    expectSuccessStatus(payResponse.status);
+
+    const removeResponse = await request(app.getHttpServer())
+      .delete(`${baseUrl}/financial/payable/${payableId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expectSuccessStatus(removeResponse.status);
+  });
+
+  it('should create, list, receive and remove a receivable account', async () => {
+    const categoriesResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/receivable/categories`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(categoriesResponse.status).toBe(200);
+    expect(Array.isArray(categoriesResponse.body)).toBe(true);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/financial/receivable`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        tenantId,
+        farmId,
+        bankAccountId,
+        description: `Conta a receber E2E ${uniqueSuffix}`,
+        amount: 3400,
+        dueDate: '2025-08-15',
+      });
+
+    expectSuccessStatus(createResponse.status);
+    expect(createResponse.body.id).toBeDefined();
+    receivableId = createResponse.body.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/receivable`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.body.data)).toBe(true);
+
+    const statsResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/receivable/stats`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(statsResponse.status).toBe(200);
+    expect(statsResponse.body.total).toBeDefined();
+
+    const receiveResponse = await request(app.getHttpServer())
+      .patch(`${baseUrl}/financial/receivable/${receivableId}/receive`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId })
+      .send({
+        amountReceived: 3400,
+        receiptDate: '2025-08-15',
+        paymentMethod: 'pix',
+        bankAccountId,
+      });
+
+    expectSuccessStatus(receiveResponse.status);
+
+    const removeResponse = await request(app.getHttpServer())
+      .delete(`${baseUrl}/financial/receivable/${receivableId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expectSuccessStatus(removeResponse.status);
   });
 });

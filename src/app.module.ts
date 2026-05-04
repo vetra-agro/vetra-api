@@ -31,6 +31,7 @@ import { FieldNotesModule } from './field-notes/field-notes.module';
 import { PhytoModule } from './phytosanitary/phyto.module';
 import { FuelModule } from './fuel/fuel.module';
 import { HistoryModule } from './history/history.module';
+import { CashFlowModule } from './cashflow/cashflow.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { HistoryModule } from './history/history.module';
     PhytoModule,
     FuelModule,
     HistoryModule,
+    CashFlowModule,
   ],
   controllers: [AppController],
   providers: [
