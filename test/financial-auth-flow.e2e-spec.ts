@@ -25,6 +25,9 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
   let payableId: string;
   let receivableId: string;
   let costCenterId: string;
+  let creditPartnerId: string;
+  let creditLimitId: string;
+  let collectionCaseId: string;
 
   const baseUrl = '/api/v1';
   const uniqueSuffix = Date.now().toString();
@@ -109,6 +112,20 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
 
     expectSuccessStatus(createFarmResponse.status);
     farmId = createFarmResponse.body.id as string;
+
+    const createPartnerResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/admin/partners`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        types: ['customer'],
+        personType: 'legal',
+        name: `Credit E2E Partner ${uniqueSuffix}`,
+        document: `98.765.432/0001-${uniqueSuffix.slice(-2)}`,
+        email: `credit.${uniqueSuffix}@example.com`,
+      });
+
+    expectSuccessStatus(createPartnerResponse.status);
+    creditPartnerId = createPartnerResponse.body.id as string;
   });
 
   afterAll(async () => {
@@ -397,5 +414,122 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
       .query({ tenantId });
 
     expectSuccessStatus(removeResponse.status);
+  });
+
+  it('should create and manage credit limits', async () => {
+    const upsertResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/financial/credit/limits`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        tenantId,
+        partnerId: creditPartnerId,
+        creditLimit: 50000,
+        paymentTermDays: 30,
+        interestRateMo: 1.5,
+        fineRate: 2,
+        status: 'active',
+      });
+
+    expectSuccessStatus(upsertResponse.status);
+    expect(upsertResponse.body.id).toBeDefined();
+    creditLimitId = upsertResponse.body.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/credit/limits`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.body)).toBe(true);
+
+    const detailResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/credit/limits/${creditLimitId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(detailResponse.status).toBe(200);
+
+    const statsResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/credit/stats`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(statsResponse.status).toBe(200);
+    expect(statsResponse.body.total_partners_with_limit).toBeDefined();
+
+    const agingResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/credit/aging`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(agingResponse.status).toBe(200);
+
+    const statusResponse = await request(app.getHttpServer())
+      .patch(`${baseUrl}/financial/credit/limits/${creditLimitId}/status`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId })
+      .send({ status: 'suspended' });
+
+    expectSuccessStatus(statusResponse.status);
+  });
+
+  it('should create, list, update and add contact to a collection case', async () => {
+    const createResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/financial/credit/cases`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        tenantId,
+        partnerId: creditPartnerId,
+        creditLimitId,
+        totalDebt: 5000,
+        totalInterest: 150,
+        totalFine: 100,
+        dueSince: '2025-03-01',
+        notes: 'Caso criado via e2e',
+      });
+
+    expectSuccessStatus(createResponse.status);
+    expect(createResponse.body.id).toBeDefined();
+    collectionCaseId = createResponse.body.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/credit/cases`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.body.data)).toBe(true);
+    expect(listResponse.body.meta).toBeDefined();
+
+    const detailResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/credit/cases/${collectionCaseId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(detailResponse.status).toBe(200);
+    expect(detailResponse.body.id).toBe(collectionCaseId);
+
+    const updateResponse = await request(app.getHttpServer())
+      .put(`${baseUrl}/financial/credit/cases/${collectionCaseId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId })
+      .send({ notes: 'Atualizado via e2e', nextContactAt: '2025-08-01' });
+
+    expectSuccessStatus(updateResponse.status);
+
+    const contactResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/financial/credit/contacts`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        caseId: collectionCaseId,
+        tenantId,
+        contactType: 'call',
+        contactedAt: new Date().toISOString(),
+        summary: 'Ligação de cobrança via e2e',
+        nextDate: '2025-08-10',
+      });
+
+    expectSuccessStatus(contactResponse.status);
+    expect(contactResponse.body.id).toBeDefined();
   });
 });

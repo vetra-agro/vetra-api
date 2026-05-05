@@ -9,12 +9,14 @@ import { ReceivableController } from "./receivable/receivable.controller";
 import { ReceivableService }    from "./receivable/receivable.service";
 import { CostCentersController } from "./cost-centers/cost-centers.controller";
 import { CostCentersService }    from "./cost-centers/cost-centers.service";
+import { CreditController } from "./credit/credit.controller";
+import { CreditService }    from "./credit/credit.service";
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports:     [AuthModule],
-  controllers: [FinancialController, BanksController, PayableController, ReceivableController, CostCentersController  ],
-  providers:   [FinancialService, BanksService,    PayableService,    ReceivableService, CostCentersService],
-  exports:     [FinancialService, BanksService,    PayableService,    ReceivableService, CostCentersService],
+  controllers: [FinancialController, BanksController, PayableController, ReceivableController, CostCentersController, CreditController],
+  providers:   [FinancialService, BanksService,    PayableService,    ReceivableService, CostCentersService, CreditService],
+  exports:     [FinancialService, BanksService,    PayableService,    ReceivableService, CostCentersService, CreditService],
 })
 export class FinancialModule {}
