@@ -24,6 +24,7 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
   let bankAccountId: string;
   let payableId: string;
   let receivableId: string;
+  let costCenterId: string;
 
   const baseUrl = '/api/v1';
   const uniqueSuffix = Date.now().toString();
@@ -324,6 +325,74 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
 
     const removeResponse = await request(app.getHttpServer())
       .delete(`${baseUrl}/financial/receivable/${receivableId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expectSuccessStatus(removeResponse.status);
+  });
+
+  it('should create, list, update and remove a cost center', async () => {
+    const createResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/financial/cost-centers`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        tenantId,
+        farmId,
+        name: `Centro de Custo E2E ${uniqueSuffix}`,
+        type: 'expense',
+        description: 'Criado via e2e',
+      });
+
+    expectSuccessStatus(createResponse.status);
+    expect(createResponse.body.id).toBeDefined();
+    costCenterId = createResponse.body.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/cost-centers`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.body)).toBe(true);
+    expect(
+      (listResponse.body as Array<{ id?: string }>).some(
+        (cc) => cc.id === costCenterId,
+      ),
+    ).toBe(true);
+
+    const statsResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/cost-centers/stats`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(statsResponse.status).toBe(200);
+
+    const breakdownResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/cost-centers/breakdown`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, dateFrom: '2025-01-01', dateTo: '2025-12-31' });
+
+    expect(breakdownResponse.status).toBe(200);
+
+    const detailResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/cost-centers/${costCenterId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(detailResponse.status).toBe(200);
+    expect(detailResponse.body.id).toBe(costCenterId);
+
+    const updateResponse = await request(app.getHttpServer())
+      .put(`${baseUrl}/financial/cost-centers/${costCenterId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId })
+      .send({ description: 'Atualizado via e2e' });
+
+    expectSuccessStatus(updateResponse.status);
+    expect(updateResponse.body.id).toBe(costCenterId);
+
+    const removeResponse = await request(app.getHttpServer())
+      .delete(`${baseUrl}/financial/cost-centers/${costCenterId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .query({ tenantId });
 
