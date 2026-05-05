@@ -28,6 +28,8 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
   let creditPartnerId: string;
   let creditLimitId: string;
   let collectionCaseId: string;
+  let forexOperationId: string;
+  let forexContractId: string;
 
   const baseUrl = '/api/v1';
   const uniqueSuffix = Date.now().toString();
@@ -531,5 +533,119 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
 
     expectSuccessStatus(contactResponse.status);
     expect(contactResponse.body.id).toBeDefined();
+  });
+
+  it('should get forex rate and manage operations', async () => {
+    const rateResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/forex/rate`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ currency: 'USD' });
+
+    expect(rateResponse.status).toBe(200);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/financial/forex/operations`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        tenantId,
+        farmId,
+        operationType: 'spot',
+        direction: 'sell',
+        currency: 'USD',
+        foreignAmount: 10000,
+        contractedRate: 5.25,
+        contractedAt: '2025-05-01',
+        dueDate: '2025-09-01',
+        bankName: 'Banco do Brasil',
+        notes: 'Operação forex criada via e2e',
+      });
+
+    expectSuccessStatus(createResponse.status);
+    expect(createResponse.body.id).toBeDefined();
+    forexOperationId = createResponse.body.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/forex/operations`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.body.data)).toBe(true);
+    expect(listResponse.body.meta).toBeDefined();
+
+    const statsResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/forex/stats`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId });
+
+    expect(statsResponse.status).toBe(200);
+
+    const updateResponse = await request(app.getHttpServer())
+      .put(`${baseUrl}/financial/forex/operations/${forexOperationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ notes: 'Atualizado via e2e' });
+
+    expectSuccessStatus(updateResponse.status);
+    expect(updateResponse.body.id).toBe(forexOperationId);
+
+    const settleResponse = await request(app.getHttpServer())
+      .patch(`${baseUrl}/financial/forex/operations/${forexOperationId}/settle`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        settlementRate: 5.30,
+        settlementDate: '2025-09-01',
+      });
+
+    expectSuccessStatus(settleResponse.status);
+    expect(settleResponse.body.status).toBe('settled');
+
+    const removeResponse = await request(app.getHttpServer())
+      .delete(`${baseUrl}/financial/forex/operations/${forexOperationId}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expectSuccessStatus(removeResponse.status);
+  });
+
+  it('should create, list and update forex contracts', async () => {
+    const createResponse = await request(app.getHttpServer())
+      .post(`${baseUrl}/financial/forex/contracts`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        tenantId,
+        farmId,
+        currency: 'USD',
+        totalForeignAmount: 50000,
+        contractedRate: 5.20,
+        deliveryStart: '2025-10-01',
+        deliveryEnd: '2025-12-31',
+        bankName: 'Santander',
+        notes: 'Contrato forex criado via e2e',
+      });
+
+    expectSuccessStatus(createResponse.status);
+    expect(createResponse.body.id).toBeDefined();
+    forexContractId = createResponse.body.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/forex/contracts`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.body)).toBe(true);
+
+    const updateResponse = await request(app.getHttpServer())
+      .put(`${baseUrl}/financial/forex/contracts/${forexContractId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ notes: 'Atualizado via e2e' });
+
+    expectSuccessStatus(updateResponse.status);
+    expect(updateResponse.body.id).toBe(forexContractId);
+
+    const linksResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/forex/contracts/${forexContractId}/links`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(linksResponse.status).toBe(200);
   });
 });
