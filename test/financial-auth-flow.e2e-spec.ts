@@ -592,7 +592,7 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
       .patch(`${baseUrl}/financial/forex/operations/${forexOperationId}/settle`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
-        settlementRate: 5.30,
+        settlementRate: 5.3,
         settlementDate: '2025-09-01',
       });
 
@@ -615,7 +615,7 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
         farmId,
         currency: 'USD',
         totalForeignAmount: 50000,
-        contractedRate: 5.20,
+        contractedRate: 5.2,
         deliveryStart: '2025-10-01',
         deliveryEnd: '2025-12-31',
         bankName: 'Santander',
@@ -647,5 +647,49 @@ describeAuthenticatedFlow('Financial Auth Flow (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`);
 
     expect(linksResponse.status).toBe(200);
+  });
+
+  it('should list crop cost data and query crop cost stats', async () => {
+    const listResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/crop-cost`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.body)).toBe(true);
+
+    const statsResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/crop-cost/stats`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(statsResponse.status).toBe(200);
+    expect(statsResponse.body.total_seasons).toBeDefined();
+    expect(statsResponse.body.finished_seasons).toBeDefined();
+
+    const compareCrop =
+      (listResponse.body as Array<{ crop?: string }>)[0]?.crop ?? 'Soja';
+
+    const compareResponse = await request(app.getHttpServer())
+      .get(`${baseUrl}/financial/crop-cost/compare/${compareCrop}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ tenantId, farmId });
+
+    expect(compareResponse.status).toBe(200);
+    expect(Array.isArray(compareResponse.body)).toBe(true);
+
+    const firstSeasonId = (
+      listResponse.body as Array<{ season_id?: string }>
+    )[0]?.season_id;
+
+    if (firstSeasonId) {
+      const detailResponse = await request(app.getHttpServer())
+        .get(`${baseUrl}/financial/crop-cost/${firstSeasonId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .query({ tenantId });
+
+      expect(detailResponse.status).toBe(200);
+      expect(detailResponse.body.season).toBeDefined();
+    }
   });
 });

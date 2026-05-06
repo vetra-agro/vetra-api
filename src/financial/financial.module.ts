@@ -13,12 +13,14 @@ import { CreditController } from "./credit/credit.controller";
 import { CreditService }    from "./credit/credit.service";
 import { ForexController } from "./forex/forex.controller";
 import { ForexService }    from "./forex/forex.service";
+import { CropCostController } from "./crop-cost/crop-cost.controller";
+import { CropCostService }    from "./crop-cost/crop-cost.service";
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports:     [AuthModule],
-  controllers: [FinancialController, BanksController, PayableController, ReceivableController, CostCentersController, CreditController, ForexController],
-  providers:   [FinancialService, BanksService,    PayableService,    ReceivableService, CostCentersService, CreditService, ForexService],
-  exports:     [FinancialService, BanksService,    PayableService,    ReceivableService, CostCentersService, CreditService, ForexService],
+  controllers: [FinancialController, BanksController, PayableController, ReceivableController, CostCentersController, CreditController, ForexController, CropCostController],
+  providers:   [FinancialService, BanksService,    PayableService,    ReceivableService, CostCentersService, CreditService, ForexService, CropCostService],
+  exports:     [FinancialService, BanksService,    PayableService,    ReceivableService, CostCentersService, CreditService, ForexService, CropCostService],
 })
 export class FinancialModule {}
