@@ -34,6 +34,7 @@ import { HistoryModule } from './history/history.module';
 import { CashFlowModule } from './cashflow/cashflow.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { AccountingModule } from './accounting/accounting.module';
+import { PurchasesModule } from './purchases/purchases.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { AccountingModule } from './accounting/accounting.module';
     CashFlowModule,
     ReconciliationModule,
     AccountingModule,
+    PurchasesModule,
   ],
   controllers: [AppController],
   providers: [
