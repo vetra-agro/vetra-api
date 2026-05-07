@@ -347,15 +347,58 @@ export class PurchasesService {
       .eq("id", responseId).single();
     if (!response) throw new NotFoundException("Resposta de cotação não encontrada");
 
-    const quote = (response as any).purchase_quotes;
+    const quote   = (response as any).purchase_quotes;
     const request = quote?.purchase_requests;
+
+    // Resolve o partner_id — obrigatório em purchase_orders
+    let partnerId = response.partner_id ?? dto.partnerId ?? null;
+
+    if (!partnerId && response.partner_name) {
+      // Fornecedor foi digitado manualmente (sem cadastro).
+      // Tenta encontrar pelo nome no tenant antes de criar.
+      const { data: existing } = await this.db.from("partners")
+        .select("id")
+        .eq("tenant_id", dto.tenantId)
+        .ilike("name", response.partner_name.trim())
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        partnerId = existing.id;
+      } else {
+        // Cria o parceiro automaticamente como fornecedor
+        const { data: created, error: createErr } = await this.db.from("partners").insert({
+          tenant_id: dto.tenantId,
+          name:      response.partner_name.trim(),
+          types:     ["supplier"],
+          status:    "active",
+        }).select("id").single();
+
+        if (createErr)
+          throw new BadRequestException(
+            `Fornecedor "${response.partner_name}" não está cadastrado e não foi possível criá-lo automaticamente. Cadastre-o em Administração → Parceiros antes de gerar o pedido.`
+          );
+
+        partnerId = created.id;
+
+        // Vincula o partner_id na resposta da cotação para futura referência
+        await this.db.from("purchase_quote_responses")
+          .update({ partner_id: partnerId })
+          .eq("id", responseId);
+      }
+    }
+
+    if (!partnerId)
+      throw new BadRequestException(
+        "Não foi possível identificar o fornecedor. Certifique-se de que o fornecedor vencedor está cadastrado em Administração → Parceiros."
+      );
 
     return this.createOrder({
       tenantId:         dto.tenantId,
-      farmId:           request?.farm_id    ?? dto.farmId,
-      seasonId:         request?.season_id  ?? dto.seasonId,
-      costCenterId:     request?.cost_center_id ?? dto.costCenterId,
-      partnerId:        response.partner_id ?? dto.partnerId,
+      farmId:           request?.farm_id        ?? dto.farmId,
+      seasonId:         request?.season_id       ?? dto.seasonId,
+      costCenterId:     request?.cost_center_id  ?? dto.costCenterId,
+      partnerId,
       quoteId,
       requestId:        quote?.request_id,
       expectedDelivery: dto.expectedDelivery,
