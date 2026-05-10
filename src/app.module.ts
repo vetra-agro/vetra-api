@@ -36,6 +36,7 @@ import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { AccountingModule } from './accounting/accounting.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { AgroContractsModule } from './agro-contracts/agro-contracts.module';
+import { SalesModule } from './sales/sales.module';
 
 @Module({
   imports: [
@@ -87,6 +88,7 @@ import { AgroContractsModule } from './agro-contracts/agro-contracts.module';
     AccountingModule,
     PurchasesModule,
     AgroContractsModule,
+    SalesModule,
   ],
   controllers: [AppController],
   providers: [
