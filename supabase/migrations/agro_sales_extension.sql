@@ -36,7 +36,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ── Contratos de venda agrícola ───────────────────────────────
-CREATE TABLE agro_sale_contracts (
+CREATE TABLE IF NOT EXISTS agro_sale_contracts (
   id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   tenant_id        UUID NOT NULL REFERENCES tenants(id)   ON DELETE CASCADE,
   farm_id          UUID REFERENCES farms(id)              ON DELETE SET NULL,
@@ -94,14 +94,24 @@ CREATE TABLE agro_sale_contracts (
   updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX asc_tenant_idx  ON agro_sale_contracts (tenant_id);
-CREATE INDEX asc_partner_idx ON agro_sale_contracts (partner_id);
-CREATE INDEX asc_season_idx  ON agro_sale_contracts (season_id);
-CREATE INDEX asc_status_idx  ON agro_sale_contracts (tenant_id, status);
-CREATE INDEX asc_dates_idx   ON agro_sale_contracts (delivery_start, delivery_end);
+CREATE INDEX IF NOT EXISTS asc_tenant_idx  ON agro_sale_contracts (tenant_id);
+CREATE INDEX IF NOT EXISTS asc_partner_idx ON agro_sale_contracts (partner_id);
+CREATE INDEX IF NOT EXISTS asc_season_idx  ON agro_sale_contracts (season_id);
+CREATE INDEX IF NOT EXISTS asc_status_idx  ON agro_sale_contracts (tenant_id, status);
+CREATE INDEX IF NOT EXISTS asc_dates_idx   ON agro_sale_contracts (delivery_start, delivery_end);
 
-CREATE TRIGGER trg_asc_updated_at BEFORE UPDATE ON agro_sale_contracts
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'trg_asc_updated_at'
+      AND tgrelid = 'agro_sale_contracts'::regclass
+  ) THEN
+    CREATE TRIGGER trg_asc_updated_at BEFORE UPDATE ON agro_sale_contracts
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  END IF;
+END $$;
 
 -- Trigger: calcula qty_pending e total_amount
 CREATE OR REPLACE FUNCTION calc_agro_contract_totals()
@@ -122,16 +132,37 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_asc_totals BEFORE INSERT OR UPDATE ON agro_sale_contracts
-  FOR EACH ROW EXECUTE FUNCTION calc_agro_contract_totals();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'trg_asc_totals'
+      AND tgrelid = 'agro_sale_contracts'::regclass
+  ) THEN
+    CREATE TRIGGER trg_asc_totals BEFORE INSERT OR UPDATE ON agro_sale_contracts
+      FOR EACH ROW EXECUTE FUNCTION calc_agro_contract_totals();
+  END IF;
+END $$;
 
 ALTER TABLE agro_sale_contracts ENABLE ROW LEVEL SECURITY;
-CREATE POLICY asc_rls ON agro_sale_contracts FOR ALL USING (
-  tenant_id IN (SELECT ut.tenant_id FROM user_tenants ut WHERE ut.user_id = auth.uid() AND ut.active = TRUE)
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = current_schema()
+      AND tablename = 'agro_sale_contracts'
+      AND policyname = 'asc_rls'
+  ) THEN
+    CREATE POLICY asc_rls ON agro_sale_contracts FOR ALL USING (
+      tenant_id IN (SELECT ut.tenant_id FROM user_tenants ut WHERE ut.user_id = auth.uid() AND ut.active = TRUE)
+    );
+  END IF;
+END $$;
 
 -- ── Entregas de contratos de venda ────────────────────────────
-CREATE TABLE agro_sale_deliveries (
+CREATE TABLE IF NOT EXISTS agro_sale_deliveries (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   contract_id     UUID NOT NULL REFERENCES agro_sale_contracts(id) ON DELETE CASCADE,
   tenant_id       UUID NOT NULL REFERENCES tenants(id)             ON DELETE CASCADE,
@@ -149,8 +180,8 @@ CREATE TABLE agro_sale_deliveries (
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX asd_contract_idx ON agro_sale_deliveries (contract_id);
-CREATE INDEX asd_date_idx     ON agro_sale_deliveries (delivery_date);
+CREATE INDEX IF NOT EXISTS asd_contract_idx ON agro_sale_deliveries (contract_id);
+CREATE INDEX IF NOT EXISTS asd_date_idx     ON agro_sale_deliveries (delivery_date);
 
 -- Trigger: atualiza qty_delivered no contrato
 CREATE OR REPLACE FUNCTION update_contract_delivered()
@@ -166,18 +197,39 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_asd_update
-  AFTER INSERT OR UPDATE OR DELETE ON agro_sale_deliveries
-  FOR EACH ROW EXECUTE FUNCTION update_contract_delivered();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'trg_asd_update'
+      AND tgrelid = 'agro_sale_deliveries'::regclass
+  ) THEN
+    CREATE TRIGGER trg_asd_update
+      AFTER INSERT OR UPDATE OR DELETE ON agro_sale_deliveries
+      FOR EACH ROW EXECUTE FUNCTION update_contract_delivered();
+  END IF;
+END $$;
 
 ALTER TABLE agro_sale_deliveries ENABLE ROW LEVEL SECURITY;
-CREATE POLICY asd_rls ON agro_sale_deliveries FOR ALL USING (
-  tenant_id IN (SELECT ut.tenant_id FROM user_tenants ut WHERE ut.user_id = auth.uid() AND ut.active = TRUE)
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = current_schema()
+      AND tablename = 'agro_sale_deliveries'
+      AND policyname = 'asd_rls'
+  ) THEN
+    CREATE POLICY asd_rls ON agro_sale_deliveries FOR ALL USING (
+      tenant_id IN (SELECT ut.tenant_id FROM user_tenants ut WHERE ut.user_id = auth.uid() AND ut.active = TRUE)
+    );
+  END IF;
+END $$;
 
 -- ── Fixação de preço de commodity ────────────────────────────
 -- Registra travamentos parciais ou totais de contratos basis/aberto
-CREATE TABLE commodity_pricings (
+CREATE TABLE IF NOT EXISTS commodity_pricings (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   tenant_id       UUID NOT NULL REFERENCES tenants(id)              ON DELETE CASCADE,
   contract_id     UUID REFERENCES agro_sale_contracts(id)           ON DELETE SET NULL,
@@ -208,21 +260,42 @@ CREATE TABLE commodity_pricings (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX cp_tenant_idx   ON commodity_pricings (tenant_id);
-CREATE INDEX cp_season_idx   ON commodity_pricings (season_id);
-CREATE INDEX cp_status_idx   ON commodity_pricings (tenant_id, status);
-CREATE INDEX cp_deadline_idx ON commodity_pricings (fix_deadline);
+CREATE INDEX IF NOT EXISTS cp_tenant_idx   ON commodity_pricings (tenant_id);
+CREATE INDEX IF NOT EXISTS cp_season_idx   ON commodity_pricings (season_id);
+CREATE INDEX IF NOT EXISTS cp_status_idx   ON commodity_pricings (tenant_id, status);
+CREATE INDEX IF NOT EXISTS cp_deadline_idx ON commodity_pricings (fix_deadline);
 
-CREATE TRIGGER trg_cp_updated_at BEFORE UPDATE ON commodity_pricings
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'trg_cp_updated_at'
+      AND tgrelid = 'commodity_pricings'::regclass
+  ) THEN
+    CREATE TRIGGER trg_cp_updated_at BEFORE UPDATE ON commodity_pricings
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  END IF;
+END $$;
 
 ALTER TABLE commodity_pricings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY cp_rls ON commodity_pricings FOR ALL USING (
-  tenant_id IN (SELECT ut.tenant_id FROM user_tenants ut WHERE ut.user_id = auth.uid() AND ut.active = TRUE)
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = current_schema()
+      AND tablename = 'commodity_pricings'
+      AND policyname = 'cp_rls'
+  ) THEN
+    CREATE POLICY cp_rls ON commodity_pricings FOR ALL USING (
+      tenant_id IN (SELECT ut.tenant_id FROM user_tenants ut WHERE ut.user_id = auth.uid() AND ut.active = TRUE)
+    );
+  END IF;
+END $$;
 
 -- ── Travamentos individuais (ordens de fixação) ───────────────
-CREATE TABLE pricing_orders (
+CREATE TABLE IF NOT EXISTS pricing_orders (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   pricing_id      UUID NOT NULL REFERENCES commodity_pricings(id) ON DELETE CASCADE,
   tenant_id       UUID NOT NULL REFERENCES tenants(id)            ON DELETE CASCADE,
@@ -238,7 +311,7 @@ CREATE TABLE pricing_orders (
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX po_pricing_idx ON pricing_orders (pricing_id);
+CREATE INDEX IF NOT EXISTS po_pricing_idx ON pricing_orders (pricing_id);
 
 -- Trigger: atualiza qty_fixed e status
 CREATE OR REPLACE FUNCTION update_pricing_fixed()
@@ -262,14 +335,35 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_po_update
-  AFTER INSERT OR UPDATE OR DELETE ON pricing_orders
-  FOR EACH ROW EXECUTE FUNCTION update_pricing_fixed();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'trg_po_update'
+      AND tgrelid = 'pricing_orders'::regclass
+  ) THEN
+    CREATE TRIGGER trg_po_update
+      AFTER INSERT OR UPDATE OR DELETE ON pricing_orders
+      FOR EACH ROW EXECUTE FUNCTION update_pricing_fixed();
+  END IF;
+END $$;
 
 ALTER TABLE pricing_orders ENABLE ROW LEVEL SECURITY;
-CREATE POLICY por_rls ON pricing_orders FOR ALL USING (
-  tenant_id IN (SELECT ut.tenant_id FROM user_tenants ut WHERE ut.user_id = auth.uid() AND ut.active = TRUE)
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = current_schema()
+      AND tablename = 'pricing_orders'
+      AND policyname = 'por_rls'
+  ) THEN
+    CREATE POLICY por_rls ON pricing_orders FOR ALL USING (
+      tenant_id IN (SELECT ut.tenant_id FROM user_tenants ut WHERE ut.user_id = auth.uid() AND ut.active = TRUE)
+    );
+  END IF;
+END $$;
 
 -- ── View: volumes contratados vs entregues ────────────────────
 CREATE OR REPLACE VIEW agro_volumes_summary AS
