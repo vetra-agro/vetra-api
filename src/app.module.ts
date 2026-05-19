@@ -40,6 +40,7 @@ import { SalesModule } from './sales/sales.module';
 import { AgroSalesModule } from './sales/agro-sales.module';
 import { LogisticsModule } from './logistics/logistics.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { MaintenanceModule } from './maintenance/maintenance.module';
     AgroSalesModule,
     LogisticsModule,
     MaintenanceModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [
