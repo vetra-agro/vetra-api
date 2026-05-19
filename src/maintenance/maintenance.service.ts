@@ -17,7 +17,7 @@ export class MaintenanceService {
   // ── Planos de Manutenção ──────────────────────────────────────────────
   async findAllPlans(tenantId: string, machineId?: string, active = true) {
     let q = this.db.from("maintenance_plans")
-      .select("*, machinery(name,model,plate), farms(name), partners(name)")
+      .select("*, machinery(name,model,license_plate), farms(name), partners(name)")
       .eq("tenant_id", tenantId).order("name");
     if (active)     q = q.eq("active", true);
     if (machineId)  q = q.eq("machinery_id", machineId);
@@ -63,7 +63,7 @@ export class MaintenanceService {
     status?: string; machineId?: string; dateFrom?: string; dateTo?: string;
   }) {
     let q = this.db.from("maintenance_schedules")
-      .select("*, maintenance_plans(name), machinery(name,model,plate), farms(name), partners(name)")
+      .select("*, maintenance_plans(name), machinery(name,model,license_plate), farms(name), partners(name)")
       .eq("tenant_id", tenantId).order("scheduled_date");
     if (filters.status)    q = q.eq("status",       filters.status);
     if (filters.machineId) q = q.eq("machinery_id", filters.machineId);
@@ -145,7 +145,7 @@ export class MaintenanceService {
     const page  = filters.page  ?? 1;
     const limit = Math.min(filters.limit ?? 50, 200);
     let q = this.db.from("work_orders")
-      .select("*, machinery(name,model,plate), farms(name), partners(name), cost_centers(name)", { count:"exact" })
+      .select("*, machinery(name,model,license_plate), farms(name), partners(name), cost_centers(name)", { count:"exact" })
       .eq("tenant_id", tenantId)
       .order("opened_at", { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
@@ -215,7 +215,7 @@ export class MaintenanceService {
   // ── Checklists ────────────────────────────────────────────────────────
   async findAllChecklists(tenantId: string, machineId?: string) {
     let q = this.db.from("inspection_checklists")
-      .select("*, machinery(name,model,plate), farms(name)")
+      .select("*, machinery(name,model,license_plate), farms(name)")
       .eq("tenant_id", tenantId).order("inspected_at", { ascending: false });
     if (machineId) q = q.eq("machinery_id", machineId);
     const { data, error } = await q;
@@ -264,7 +264,7 @@ export class MaintenanceService {
 
   async getMachinery(tenantId: string) {
     const { data, error } = await this.db.from("machinery")
-      .select("id, name, model, plate, type, status, hour_meter")
+      .select("id, name, model, license_plate, type, status, hour_meter")
       .eq("tenant_id", tenantId).eq("active", true).order("name");
     if (error) throw new BadRequestException(error.message);
     return data ?? [];
