@@ -265,7 +265,7 @@ export class MaintenanceService {
   async getMachinery(tenantId: string) {
     const { data, error } = await this.db.from("machinery")
       .select("id, name, model, license_plate, type, status, hourmeter_current")
-      .eq("tenant_id", tenantId).eq("active", true).order("name");
+      .eq("tenant_id", tenantId).order("name");
     if (error) throw new BadRequestException(error.message);
     return data ?? [];
   }
