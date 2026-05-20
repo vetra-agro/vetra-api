@@ -41,6 +41,7 @@ import { AgroSalesModule } from './sales/agro-sales.module';
 import { LogisticsModule } from './logistics/logistics.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { ExportModule } from './export/export.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { InventoryModule } from './inventory/inventory.module';
     LogisticsModule,
     MaintenanceModule,
     InventoryModule,
+    ExportModule,
   ],
   controllers: [AppController],
   providers: [
