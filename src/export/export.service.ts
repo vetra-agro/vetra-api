@@ -46,6 +46,16 @@ export class ExportService {
   }
 
   async upsertContract(dto: any, userId?: string) {
+    const rawQtyContracted = dto.qtyContracted ?? dto.qty_contracted;
+    const qtyContracted =
+      rawQtyContracted === undefined || rawQtyContracted === null || rawQtyContracted === ""
+        ? null
+        : +rawQtyContracted;
+
+    if (!dto.id && (qtyContracted === null || Number.isNaN(qtyContracted))) {
+      throw new BadRequestException("qtyContracted (ou qty_contracted) é obrigatório para criar contrato");
+    }
+
     const payload = {
       tenant_id:       dto.tenantId,
       farm_id:         dto.farmId         || null,
@@ -56,7 +66,7 @@ export class ExportService {
       crop:            dto.crop,
       product_desc:    dto.productDesc    || null,
       unit:            dto.unit           ?? "mt",
-      qty_contracted:  +dto.qtyContracted,
+      qty_contracted:  qtyContracted,
       price_usd:       dto.priceUsd       ? +dto.priceUsd       : null,
       price_brl:       dto.priceBrl       ? +dto.priceBrl       : null,
       exchange_rate:   dto.exchangeRate   ? +dto.exchangeRate   : null,
@@ -73,6 +83,15 @@ export class ExportService {
       tags:            dto.tags           ?? [],
       created_by:      userId,
     };
+
+    if (dto.id && qtyContracted === null) {
+      delete (payload as any).qty_contracted;
+    }
+
+    if (qtyContracted !== null && Number.isNaN(qtyContracted)) {
+      throw new BadRequestException("qtyContracted (ou qty_contracted) deve ser numérico");
+    }
+
     if (dto.id) {
       const { data, error } = await this.db.from("export_contracts")
         .update(payload).eq("id", dto.id).select().single();
